@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<actions>			
+		<action ENABLE = "1" NAME = "Generate_TDS" REMOVE_PREFIX = ""/>
+		<!--    ^ 	Enable/Disable the function of generate TDS items from a FreeMind file.
+					The output file will be imported into Testlink mannually as the TDS document for traceability purpose. 
+					This requires the (tds_url) and (testlink, repository[PREFIX], tds_prefix) to be set in below configuration sections. -->
+		<action ENABLE = "0" NAME = "Link_TDS_with_TCs"/>
+		<!--    ^ 	Enable/Disable the function of updating Text Case xml file with TDS items as link.
+					The updated xml file will be imported to TestLink thus you don't neec to create links to TDS items manually. 
+					This requires the (tds_url, tc_url) to be set in below configuration sections. -->						
+		<action ENABLE = "0" NAME = "Link_TDS_with_TCs-PFS"/>
+		<!--    ^ 	Enable/Disable the function of updating Text Case xml file with TDS items as link.
+					The updated xml file will be imported to TestLink thus you don't neec to create links to TDS items manually. 
+					This requires the (tds_url, tc_url) to be set in below configuration sections. -->							
+		<action ENABLE = "0" NAME = "Link_TCs_with_TDS"/>
+		<!--    ^ 	Enable/Disable the function of link Test Design Specification Document with Test cases.
+					Test Cases will be linked to TDS items in FreeMind file. 
+					This requires the (tds_url, tc_url, PFS_PREFIX, TDS_PREFIX) to be set in below configuration sections. -->	
+		<action ENABLE = "0" NAME = "Link_TDS_with_TCs-TPs" FILTER = ""/>
+		<!--    ^ 	Enable/Disable the function of updating Text Case xml file with TDS items as link.
+					The updated xml file will be imported to TestLink thus you don't neec to create links to TDS items manually. 
+					This requires the (tds_url, tc_url) to be set in below configuration sections. -->						
+		<action ENABLE = "0" NAME = "Create_Test_Plan" AUTO = "0" TEAM = "SIT"/>
+		<!--    ^ 	Enable/Disable the function of create test plan from a FreeMind file.
+					If "AUTO" is set to "1", then the test pan will be created in Testlink automatically and test cases will be added to this test plan as well.
+					IMPORTANT: This function can only be used by test leader in TestLink with his/her DEV_KEY.
+					Otherwise a xml file will be created and you need to import the test plan into TestLink manually.
+					This requires the (tds_url, tp_url, tc_url) and (testlink, repository[PREFIX], test_plan) to be set in below configuration sections. -->
+		<action ENABLE = "0" NAME = "Extract_Requirements"/>
+		<!--    ^ 	Enable/Disable the function of extract requirements from spreadsheet template.
+					This requires the (requirements_url, traceability, pfs-pmr_name, pmr-pfs_name) 
+					and (testlink, repository[PREFIX], pfs_prefix, pmr_prefix) to be set in below configuration sections. -->
+		<action ENABLE = "0" NAME = "Link_PFS_with_PMR"/>
+		<!--    ^ 	Enable/Disable the function of creating traceability between PFS and PMR.
+					You need export PFS and PMR with xml format from TestLink and then perform this action. 
+					This requires the () to be set in below configuration sections. 
+					IMPORTANT: This function doesn't work since TestLink 1.9.9 doesn't support exporting relations between requirements. -->	
+		<action ENABLE = "0" NAME = "Link_PFS_with_TCs"/>
+		<!--    ^ 	Enable/Disable the function of creating traceability between PFS and Test Cases.
+					You need export PFS and Test Cases with xml format from TestLink and then perform this action. 
+					This requires the () to be set in below configuration sections. -->							
+		<!-- TODOs -->
+		<!-- Link PFS with test plan -->
+		<!-- Extract PFS from SDS -->
+	</actions>
+
+	<testlink URL="http://testlink.ea.mot.com/lib/api/xmlrpc/v1/xmlrpc.php" DEV_KEY="ad321a7fcd42cdf0664fe7734c260d2e">
+		<!--    ^ 	 DEV_KEY is gotten from your testlink website. It is under 'My Settings' 'API interface' 'Personal API access key' -->
+		<repository PREFIX="HDVB" NAME="HGI DVB Products">
+			<project NAME="HMC3000(V4.0)-NPI" PFS_PREFIX="HMC3000(V4.0)-NPI_, HMC3000(V4.0)-NPI-Kbro_" PMR_PREFIX="" TDS_PREFIX ="HMC3000(V4.0)-NPI-TDS_" MASTER_PLAN = "HMC3000(V4.0)-NPI-Master-Plan">	
+				<!--   If PFS_PREFIX, PMR_PREFIX, TDS_PREFIX is set to empty string "", the script will use project name plus "_" as the prefix  -->
+				<!--   MASTER_PLAN must hold all implementted test suites and test cases for this project. 
+						Please note test cases created for this project but not implemented are only labeled with keyword and not in the master plan.
+						This will be used to query the test suites and test cases information from TestLink  -->
+			</project>
+		</repository>
+	</testlink>
+	
+	<file_location URL="./">
+		<requirements_url>Base_PFS.xlsm</requirements_url>
+		<!--  ^  INPUT: This is the PMR, PFS and traceability document created based on defined template.	 -->
+		<pmr_url>HMC3000(V4.0)-NPI-PMR.xml</pmr_url>
+		<!--  ^  INPUT/OUTPUT: This is the PMR file manually exported/import from/to TestLink	 -->	
+		<pfs_url>HMC3000(V4.0)-NPI-PFS.xml</pfs_url>
+		<!--  ^  INPUT/OUTPUT: This is the PFS file manually exported/import from/to TestLink	 -->			
+		<tds_url>HMC3000(V4.0)-NPI-TDS.mm</tds_url>
+		<!--  ^  INPUT: This is the Test Design Specification Document created by FreeMind	 -->
+		<tc_url>HMC3000(V4.0)-NPI-TC.xml</tc_url>
+		<!--  ^  INPUT: This is the Test Cases file manually exported from TestLink	 -->		
+		<tp_url>HMC3000(V4.0)-NPI-TP-A1.1.mm</tp_url>
+		<!--  ^  INPUT: This is the Test Plan created by FreeMind. The file name of the test plan will be used as the test plan name in TestLink	 -->	
+		<based_tp_url>HMC3000(V4.0)-NPI-TDS[TDS-TC-TP].mm</based_tp_url>
+		<!--  ^  INPUT: This is the basedlined Test Plan created by FreeMind.  
+				 This plan could be based on {PFS|TDS|TS}-TC[-TP] FreeMind file. -->
+	</file_location>	
+	
+	<!--    DO NOT REMOVE THIS SECTION!	 -->
+	<freemind URL="http://arris-sites.arrisi.com/cpe/dv/HGIT/Test/Shared%20Documents/2.%20General_Management/0.%20Test%20Management%20Tool/0.%20FreeMind/">
+		<flashobject_swf>visorFreemind.swf</flashobject_swf>
+		<flashobject_js>flashobject.js</flashobject_js>
+		<html_template>flashBrowserDocu.html</html_template>
+	</freemind>
+	<!--    DO NOT REMOVE THIS SECTION!	 -->	
+</configuration>
