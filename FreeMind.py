@@ -4,16 +4,15 @@ import argparse
 import logging.config
 import sys
 import os
-import pprint
-import copy
-import testlink
-from xlrd import open_workbook
-from xlwt import Formula, Workbook
 from xml.etree import ElementTree as ET
-import xml.dom.minidom as minidom 
+import xml.dom.minidom as minidom
 import xml.etree.cElementTree  as lxmlET
 
-PKG_PATH = os.path.abspath(__file__)
+import testlink
+from xlrd import open_workbook
+
+
+PKG_PATH = './'
 
 TC_ID = 0
 TC_TITLE = 1
@@ -27,7 +26,7 @@ REQ_TITLE = 1
 REQ_DESC = 2
 REQ_VER_TEAM = 3
 
-PREFIX_TITLE_SEP = ':'
+PREFIX_TITLE_SEP = '::'
 
 ''' The following functions (CDATA and _serialize_xml) is a workaround for using CDATA section with ElementTree
 '''
@@ -155,9 +154,9 @@ class FreeMind(object):
             if action_name == 'Extract_Requirements':
                 self.extract_requirements(self.requirements_url)
             if action_name == 'Link_PFS_with_PMR':
-                self.link_pfs_pmr(self.pmr_url, self.pfs_url)
+                pass  #self.link_pfs_pmr(self.pmr_url, self.pfs_url)
             if action_name == 'Link_PFS_with_TCs':
-                self.link_tc2pfs(self.pfs_url, self.tc_url)    
+                pass  #self.link_tc2pfs(self.pfs_url, self.tc_url)
             if action_name == 'Generate_TDS':
                 self.gen_tds(self.tds_url, action.attrib['REMOVE_PREFIX'].strip())      
             if action_name == 'Link_TDS_with_TCs':
@@ -237,9 +236,9 @@ class FreeMind(object):
                 i = i + 1                         
                 prefix = str(num) + '.' + str(i)
                 content = desc +'|' +child.attrib['TEXT']
-                ''' Make sure this is not the test case or requirement link node since only they are nodes with links'''
-                if not child.attrib.has_key('LINK'): 
-                    ''' If this is the last node or the node has sub-nodes with links, consider it as a TDS item'''
+                # Make sure this is not the test case or requirement link node since only they are nodes with links
+                if not child.attrib.has_key('LINK'):
+                    # If this is the last node or the node has sub-nodes with links, consider it as a TDS item
                     if (child.find('node') == None) or ((child.find('node') <> None) and (child.find('node').attrib.has_key('LINK'))):                        
                         item_list.append([prefix[4:], '|'.join(content.split('|')[2:]), '', 'SIT'])              
                     self._get_tds_items(child, prefix, content, item_list )
@@ -276,7 +275,7 @@ class FreeMind(object):
                 docid = ET.SubElement(requirement, 'docid')
                 docid.append(CDATA(prefix + item[REQ_ID]))
                 title = ET.SubElement(requirement, 'title')
-                title.append(CDATA(item[REQ_TITLE]))        
+                title.append(CDATA(item[REQ_TITLE]))
                 node_order = ET.SubElement(requirement, 'node_order')
                 node_order.append(CDATA(i))                   
                 description = ET.SubElement(requirement, 'description')
@@ -306,9 +305,10 @@ class FreeMind(object):
                                                                                                             
         #filename = os.path.splitext(self.fm_file)[0] + '.xml'
         rough_string = ET.tostring(tds, 'utf-8')
+        #print rough_string
         reparsed = minidom.parseString(rough_string)        
         f= open(filename, 'w')
-        reparsed.writexml(f, addindent='  ', newl='\n',encoding='utf-8')
+        reparsed.writexml(f, newl='\n', encoding='utf-8')
         f.close()
 
         self.logger.info(self.log_prefix + \
@@ -355,9 +355,9 @@ class FreeMind(object):
     
     def _link_tc_node(self, tc_id, tc_title, link_id, node):
         for child in node.iter('node'):
-            ''' Make sure this is not the test case or requirement link node since only they are nodes with links'''
+            # Make sure this is not the test case or requirement link node since only they are nodes with links
             if not child.attrib.has_key('LINK'):
-                ''' If the TDS prefix matches with the link ID, then add this link to its sub-node'''                       
+                # If the TDS prefix matches with the link ID, then add this link to its sub-node
                 if child.attrib['TEXT'].split(' ')[0] == link_id.split('_')[-1]:
                     link_text = 'HDVB-' + tc_id + ':' + tc_title
                     link_url = 'http://testlink.ea.mot.com/linkto.php?tprojectPrefix=HDVB&item=testcase&id=HDVB-' + tc_id
@@ -368,9 +368,9 @@ class FreeMind(object):
                     return 0  
 
         self.logger.error(self.log_prefix + \
-            "Cannot find " % \
-            (child.attrib['TEXT']))        
-                     
+                          "Cannot find %s" % \
+                          (tc_id))
+
         return None
     
     def _read_tc_from_xml(self, xml_file, fm_file, tc_req_list):
@@ -434,6 +434,9 @@ class FreeMind(object):
                 valid_tc = False
                 node_comment = ''
                 node_text = child.attrib['name']
+                expected_results = ''
+                tc_id = ''
+                regression_level = ''
                 for item in child:
                     if item.tag == 'externalid':                
                         tc_id = item.text
@@ -444,15 +447,15 @@ class FreeMind(object):
                         node_comment =  node_comment + '<p>Preconditions:</p>'+ str(item.text) + '<p></p>'
                     if item.tag == 'steps':
                         node_comment =  node_comment + '<p>Steps:</p>'
-                        expectedresults = '<p>Expected results:</p>'                        
+                        expected_results = '<p>Expected results:</p>'
                         for step in item.iter():             
                             if step.tag == 'step_number':                
                                 node_comment =  node_comment + '<p>' + step.text + '.'
-                                expectedresults = expectedresults + '<p>' + step.text + '.'
-                            if step.tag == 'actions':                
-                                node_comment =  node_comment + str(step.text).replace('<p>', '', 1)    
-                            if step.tag == 'expectedresults':                
-                                expectedresults =  expectedresults + str(step.text).replace('<p>', '', 1) 
+                                expected_results = expected_results + '<p>' + step.text + '.'
+                            if step.tag == 'actions':
+                                node_comment = node_comment + str(step.text).replace('<p>', '', 1)
+                            if step.tag == 'expected_results':
+                                expected_results = expected_results + str(step.text).replace('<p>', '', 1)
                     if item.tag == 'custom_fields':
                         for custom_field in item:
                             if list(custom_field)[0].text == 'HGI Regression Level':
@@ -467,7 +470,7 @@ class FreeMind(object):
 #                                    break 
 #                if not valid_tc:
 #                    continue                                     
-                node_comment = node_comment  + '<p></p>' +  expectedresults
+                node_comment = node_comment + '<p></p>' + expected_results
                 node_link = self.testlink_url + '/linkto.php?tprojectPrefix='+ self.repo_prefix + '&item=testcase&id=' + self.repo_prefix + '-' + tc_id                
                 tc_node = ET.SubElement(fm_root,  'node', {'COLOR' : '#990000', 'LINK' : node_link, 'TEXT': node_text})
                 richcontent = ET.SubElement(tc_node,  'richcontent', {'TYPE' : 'NOTE'})
@@ -488,10 +491,11 @@ class FreeMind(object):
         
         #res = self._read_tc_from_xml(tc_file, test_suite, tc_tds_list, tc_pfs_list)
         #res = self._gen_tc_freemind(test_suite)
-        res = self._link_tds_tc(self.tds_url)
-        res = self._link_tds_pfs()
-        res = self._link_pfs_tc()
-        
+
+        # res = self._link_tds_tc(self.tds_url)
+        # res = self._link_tds_pfs()
+        # res = self._link_pfs_tc()
+
         self.fm_file = fm_file        
         tds_title = os.path.split(os.path.splitext(self.fm_file)[0])[1]
         self.fm_tree = lxmlET.parse(fm_file)
@@ -500,14 +504,14 @@ class FreeMind(object):
         #parser = lxmlET.XMLParser(False)
         self.tc_file = tc_file
         self.tc_tree = ET.parse(tc_file)
-        tc_root = self.tc_tree.getroot()  
+        tc_root = self.tc_tree.getroot()
 
-        ''' Firstly put all test cases with requirements/TDS links into a list'''
+        # Firstly put all test cases with requirements/TDS links into a list
         link_list = [] 
         self._get_link_node(fm_root, link_list)
         #pprint.pprint(link_list)
 
-        ''' Secondly loop through all test cases and add the TDS linkage in'''                            
+        #Secondly loop through all test cases and add the TDS linkage in
         for tc in tc_root.iter('testcase'):
             tc_name =  tc.get('name')
             tc_id = tc.find('externalid').text
@@ -876,11 +880,11 @@ class FreeMind(object):
                    
     def _remove_node_prefix(self, node):
         for child in node.iter('node'):
-            ''' Make sure this is not the test case or requirement link node since only they are nodes with links'''
+            # Make sure this is not the test case or requirement link node since only they are nodes with links
             if not child.attrib.has_key('LINK'):
-                ''' If the node text is started with a number, then we consider it having added prefix'''                       
+                # If the node text is started with a number, then we consider it having added prefix
                 if child.attrib['TEXT'][0].isdigit:
-                    '''Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix'''
+                    # Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix
                     if (child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> child.attrib['TEXT']) :
                         self.logger.debug(self.log_prefix + \
                             "Prefix of node (%s) has been removed" % \
@@ -910,11 +914,11 @@ class FreeMind(object):
             if child.tag == 'node':
                 i = i + 1                  
                 prefix = str(num) + '.' + str(i)
-                ''' Make sure this is not the test case or requirement link node since only they are nodes with links'''
-                if not child.attrib.has_key('LINK'):      
-                    ''' If the node text is started with a number, then we consider it has already been added prefix'''                      
+                # Make sure this is not the test case or requirement link node since only they are nodes with links
+                if not child.attrib.has_key('LINK'):
+                    # If the node text is started with a number, then we consider it has already been added prefix
                     if child.attrib['TEXT'][0].isdigit:
-                        '''Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix'''
+                        # Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix
                         if (child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> child.attrib['TEXT']) :
                             if child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> prefix[4:]:                                                                
                                 self.logger.error(self.log_prefix + \
@@ -972,6 +976,7 @@ class FreeMind(object):
                 if link_id == '':
                     continue
                 reversed_link_exist = False
+                i = 0
                 for i, reversed_link in enumerate(reversed_list):
                     if reversed_link[0] == link_id:
                         reversed_link_exist = True
@@ -1010,7 +1015,7 @@ class FreeMind(object):
                 (dst_node.attrib['TEXT'], last_node))            
             if not last_node :
                 continue
-            '''Please note the new added nodes will be looped through iter again so we need to ignore that by using new_added_nodes[]'''
+            # Please note the new added nodes will be looped through iter again so we need to ignore that by using new_added_nodes[]
             if dst_node.attrib['TEXT'] not in new_added_nodes: 
                 dst_id = dst_node.attrib['TEXT'].strip().split(PREFIX_TITLE_SEP)[0]
                 traceability_links = []
@@ -1019,7 +1024,7 @@ class FreeMind(object):
                         traceability_links = traceability[1]
                         break
                 if (traceability_links == []) or (traceability_links == ['']):
-                    ''' Highlight the node with traceability missing'''
+                    # Highlight the node with traceability missing
                     self.logger.warning(self.log_prefix + \
                         "Highlight the node (%s) with missing traceability for file %s." % \
                         (dst_node.attrib['TEXT'].strip(), output_file))
@@ -1061,7 +1066,7 @@ class FreeMind(object):
         new_added_nodes = []
                 
         for dst_node in dst_fm_root.iter('node'):
-            '''Please note the new added nodes will be looped through iter again so we need to ignore that by using new_added_nodes[]'''
+            # Please note the new added nodes will be looped through iter again so we need to ignore that by using new_added_nodes[]
             if dst_node.attrib.has_key('LINK') and (dst_node.attrib['TEXT'] not in new_added_nodes): 
                 req_id = dst_node.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0]
                 req_links = []
@@ -1070,7 +1075,7 @@ class FreeMind(object):
                         req_links = req_trace[1]
                         break
                 if (req_links == []) or (req_links == ['']):
-                    ''' Highlight the node with traceability missing'''
+                    # Highlight the node with traceability missing
                     self.logger.warning(self.log_prefix + \
                         "Cannot find the requirement links for %s." % \
                         (req_id))
@@ -1113,7 +1118,8 @@ class FreeMind(object):
         
         req_count = 0
         for group in req_list:
-            group_node = ET.SubElement(root_node,  'node', {'COLOR' : '#990000', 'FOLDED':"true", 'TEXT': group[0]})            
+            group_node = ET.SubElement(root_node, 'node', {'COLOR': '#990000', 'FOLDED': "true", 'TEXT': group[0]})
+            i = 0
             for i, req_item in enumerate(group[1]):
                 node_text = req_item[REQ_ID] + PREFIX_TITLE_SEP + req_item[REQ_TITLE]
                 node_comment = req_item[REQ_DESC]
@@ -1202,27 +1208,27 @@ def args_parser(arguments = None):
         template and message map.')  
     parser.add_argument('--version', action='version', version='%(prog)s 0.1')  
     group = parser.add_mutually_exclusive_group(required = True)
-    group.add_argument('-ap', '--add_prefix', action='store_true', \
-        help="Update the existing Freemind file and add the prefix to each node except for \
+    group.add_argument('-ap', '--add_prefix', action='store_true',
+                       help="Update the existing Freemind file and add the prefix to each node except for \
               nodes with links (for instance: test case node or requirement node). \
               The most common usage is FreeMind -ap -f FREEMIND_FILE.")
-    group.add_argument('-rp', '--remove_prefix', action='store_true', \
-        help="Update the existing Freemind file and remove the prefix to each node. \
-              The most common usage is FreeMind -rp -f FREEMIND_FILE.")   
-    group.add_argument('-g', '--gen_tds', action='store_true', \
-        help="Update the existing Freemind file and remove the prefix to each node. \
-              The most common usage is FreeMind -rp -f FREEMIND_FILE.")  
-    group.add_argument('-l', '--link_tds', action='store_true', \
-        help="Extract test case and TDS linkage information from xml file exported from TestLink.\
+    group.add_argument('-rp', '--remove_prefix', action='store_true',
+                       help="Update the existing Freemind file and remove the prefix to each node. \
+              The most common usage is FreeMind -rp -f FREEMIND_FILE.")
+    group.add_argument('-g', '--gen_tds', action='store_true',
+                       help="Update the existing Freemind file and remove the prefix to each node. \
+              The most common usage is FreeMind -rp -f FREEMIND_FILE.")
+    group.add_argument('-l', '--link_tds', action='store_true',
+                       help="Extract test case and TDS linkage information from xml file exported from TestLink.\
                 and update the FreeMind file with test cases links.\
-                The most common usage is FreeMind -l -f FREEMIND_FILE -xml XML_FILE.")      
-    
-    parser.add_argument('-s', '--src_file',\
-        help="Specify the FreeMind file which contains various nodes of test design specification.")
-    
-    parser.add_argument('-d', '--dst_file',\
-        help="Specify the xml file exported from TestLink with test case and TDS linkage information.")
-          
+                The most common usage is FreeMind -l -f FREEMIND_FILE -xml XML_FILE.")
+
+    parser.add_argument('-s', '--src_file',
+                        help="Specify the FreeMind file which contains various nodes of test design specification.")
+
+    parser.add_argument('-d', '--dst_file',
+                        help="Specify the xml file exported from TestLink with test case and TDS linkage information.")
+
     if arguments == None:
         args = parser.parse_args()
     else:
