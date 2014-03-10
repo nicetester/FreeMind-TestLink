@@ -13,9 +13,7 @@ from xml.etree import ElementTree as ET
 import xml.dom.minidom as minidom 
 import xml.etree.cElementTree  as lxmlET
 
-
-
-PKG_PATH = './'
+PKG_PATH = os.path.abspath(__file__)
 
 TC_ID = 0
 TC_TITLE = 1
