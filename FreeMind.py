@@ -1272,6 +1272,9 @@ class FreeMind(object):
                         pfs_dvt = src_sheet.cell_value(i, pfs_dvt_col).strip()
                         pfs_sit = src_sheet.cell_value(i, pfs_sit_col).strip()
                         pmr_cmt = src_sheet.cell_value(i, pmr_cmt_col).strip()
+                        if pmr_cmt != '':
+                            pmr_cmt = 'SE Comments:' + pmr_cmt
+
                         pfs_ft = ''
                         if pfs_ft_col != -1:
                             # This is an optional column
