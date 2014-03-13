@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 	<actions>			
-		<action ENABLE = "1" NAME = "Generate_TDS" REMOVE_PREFIX = ""/>
+		<action ENABLE = "0" NAME = "Generate_TDS" REMOVE_PREFIX = ""/>
 		<!--    ^ 	Enable/Disable the function of generate TDS items from a FreeMind file.
 					The output file will be imported into Testlink mannually as the TDS document for traceability purpose. 
 					This requires the (tds_url) and (testlink, repository[PREFIX], tds_prefix) to be set in below configuration sections. -->
@@ -27,7 +27,7 @@
 					IMPORTANT: This function can only be used by test leader in TestLink with his/her DEV_KEY.
 					Otherwise a xml file will be created and you need to import the test plan into TestLink manually.
 					This requires the (tds_url, tp_url, tc_url) and (testlink, repository[PREFIX], test_plan) to be set in below configuration sections. -->
-		<action ENABLE = "0" NAME = "Extract_Requirements"/>
+		<action ENABLE = "1" NAME = "Extract_Requirements" TEMPLATE = "HGI"/>
 		<!--    ^ 	Enable/Disable the function of extract requirements from spreadsheet template.
 					This requires the (requirements_url, traceability, pfs-pmr_name, pmr-pfs_name) 
 					and (testlink, repository[PREFIX], pfs_prefix, pmr_prefix) to be set in below configuration sections. -->
@@ -45,10 +45,10 @@
 		<!-- Extract PFS from SDS -->
 	</actions>
 
-	<testlink URL="http://testlink.ea.mot.com/lib/api/xmlrpc/v1/xmlrpc.php" DEV_KEY="ad321a7fcd42cdf0664fe7734c260d2e">
+	<testlink URL="http://10.203.5.95/testlink/lib/api/xmlrpc/v1/xmlrpc.php" DEV_KEY="ad321a7fcd42cdf0664fe7734c260d2e">
 		<!--    ^ 	 DEV_KEY is gotten from your testlink website. It is under 'My Settings' 'API interface' 'Personal API access key' -->
 		<repository PREFIX="HDVB" NAME="HGI DVB Products">
-			<project NAME="HMC3000(V4.0)-NPI" PFS_PREFIX="HMC3000(V4.0)-NPI_, HMC3000(V4.0)-NPI-Kbro_" PMR_PREFIX="" TDS_PREFIX ="HMC3000(V4.0)-NPI-TDS_" MASTER_PLAN = "HMC3000(V4.0)-NPI-Master-Plan">	
+			<project NAME="HMC3000(V4.0)-NPI" PFS_PREFIX="HMC3000(V4.0)-NPI_" PMR_PREFIX="" TDS_PREFIX ="HMC3000(V4.0)-NPI-TDS_" MASTER_PLAN = "HMC3000(V4.0)-NPI-Master-Plan">
 				<!--   If PFS_PREFIX, PMR_PREFIX, TDS_PREFIX is set to empty string "", the script will use project name plus "_" as the prefix  -->
 				<!--   MASTER_PLAN must hold all implementted test suites and test cases for this project. 
 						Please note test cases created for this project but not implemented are only labeled with keyword and not in the master plan.
@@ -58,7 +58,7 @@
 	</testlink>
 	
 	<file_location URL="./">
-		<requirements_url>Base_PFS.xlsm</requirements_url>
+		<requirements_url>HMC3000 V4.0_Platform_Software_PFS_x.4_draft.xls</requirements_url>
 		<!--  ^  INPUT: This is the PMR, PFS and traceability document created based on defined template.	 -->
 		<pmr_url>HMC3000(V4.0)-NPI-PMR.xml</pmr_url>
 		<!--  ^  INPUT/OUTPUT: This is the PMR file manually exported/import from/to TestLink	 -->	
