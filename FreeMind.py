@@ -326,7 +326,6 @@ class FreeMind(object):
                     value = ET.SubElement(custom_field, 'value')
                     value.append(CDATA(item[REQ_PHASE]))
 
-
         if relation_list is not None:
             for relation_src in relation_list:
                 for relation_dst in relation_src[1]:
@@ -342,7 +341,8 @@ class FreeMind(object):
         #print rough_string
         reparsed = minidom.parseString(rough_string)
         f = open(filename, 'w')
-        reparsed.writexml(f, newl='\n', encoding='utf-8')
+        #reparsed.writexml(f, newl='\n', encoding='utf-8')
+        reparsed.writexml(f, encoding='utf-8')
         f.close()
 
         self.logger.info(self.log_prefix + \
@@ -996,7 +996,7 @@ class FreeMind(object):
 
         # Get the filename without extension.
         title = os.path.splitext(os.path.split(self.pmr_url)[-1])[0]
-        res = self._gen_req_xml(pmr_list, title, self.pmr_url, self.pmr_prefix)
+        res = self._gen_req_xml(pmr_list, title, self.pmr_url, self.pmr_prefix, prefixed_pmr_pfs_list)
         title = os.path.splitext(os.path.split(self.pfs_url)[-1])[0]
         res = self._gen_req_xml(pfs_list, title, self.pfs_url, self.pfs_prefix, prefixed_pmr_pfs_list)
 
@@ -1335,11 +1335,11 @@ class FreeMind(object):
                             # PFS item traced to PMR item
                             if pmr_index not in pmr_index_list:
                                 pmr_list[pmr_grp_id][1].append(
-                                    [pmr_index, pmr_index, pmr_desc, pmr_ver_team, pmr_cmt, ''])
+                                    [pmr_index, pmr_desc, pmr_desc, pmr_ver_team, pmr_cmt, ''])
                                 pmr_index_list.append(pmr_index)
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
-                                    [pfs_index, pfs_cat, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                    [pfs_index,  pfs_desc, pfs_desc, pfs_ver_team, '', pfs_phase])
                                 pfs_index_list.append(pfs_index)
                             self._add_traceability(pmr_pfs_trace_list, pmr_index, [pfs_index])
                         if pmr_index == '' and pmr_desc == '' and pfs_index != '' and pfs_desc != '':
@@ -1347,7 +1347,7 @@ class FreeMind(object):
                             pmr_index = pre_pmr_index
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
-                                    [pfs_index, pfs_cat, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                    [pfs_index,  pfs_desc, pfs_desc, pfs_ver_team, '', pfs_phase])
                                 pfs_index_list.append(pfs_index)
                             self._add_traceability(pmr_pfs_trace_list, pmr_index, [pfs_index])
                         if pmr_index == '' and pmr_desc == '' and pfs_index == '' and pfs_desc != '':
@@ -1358,7 +1358,7 @@ class FreeMind(object):
                             # Existing PFS item traced to new PMR item
                             if pmr_index not in pmr_index_list:
                                 pmr_list[pmr_grp_id][1].append(
-                                    [pmr_index, pmr_index, pmr_desc, pmr_ver_team, pmr_cmt, ''])
+                                    [pmr_index, pmr_desc, pmr_desc, pmr_ver_team, pmr_cmt, ''])
                                 pmr_index_list.append(pmr_index)
                             self._add_traceability(pmr_pfs_trace_list, pmr_index, pfs_desc.split('\n'))
                         if pmr_index != '' and pmr_desc != '' and pfs_index == '' and pfs_desc == '':
@@ -1366,7 +1366,7 @@ class FreeMind(object):
                             # pfs_index = pre_pfs_index
                             if pmr_index not in pmr_index_list:
                                 pmr_list[pmr_grp_id][1].append(
-                                    [pmr_index, pmr_index, pmr_desc, pmr_ver_team, pmr_cmt, ''])
+                                    [pmr_index, pmr_desc, pmr_desc, pmr_ver_team, pmr_cmt, ''])
                                 pmr_index_list.append(pmr_index)
                                 # self._add_traceability(pmr_pfs_trace_list, pmr_index, pfs_index)
 
