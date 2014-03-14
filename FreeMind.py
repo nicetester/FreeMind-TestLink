@@ -92,7 +92,7 @@ class FreeMind(object):
         self.flashobject_js = None
         self.html_template = None
         self.logger.info(self.log_prefix + \
-                         "FreeMind Tool V0.1 for Test Design and Test Management.")
+                         "FreeMind-TestLink Tool V0.1 for Requirement Extract, Test Design and Test Management.")
         if cfg_file:
             # Parse the configuration file automatically if it's specified
             self.logger.info(self.log_prefix + \
@@ -986,10 +986,11 @@ class FreeMind(object):
                               "Cannot find the specified file (%s). Action aborted." % \
                               (excel_file))
             return None
-        if template == 'HGI':
-            res = self._read_req_from_xls_hgi(excel_file, pmr_list, pfs_list, pfs_pmr_list)
-        elif template == 'KreaTV':
+
+        if template == 'KreaTV':
             res = self._read_req_from_xls_kreatv(excel_file, pmr_list, pfs_list, pfs_pmr_list)
+        else:
+            res = self._read_req_from_xls_hgi(excel_file, pmr_list, pfs_list, pfs_pmr_list)
 
         res = self._reverse_links(pfs_pmr_list, pmr_pfs_list)
         res = self._add_req_prefix(pmr_pfs_list, prefixed_pmr_pfs_list)
@@ -1215,8 +1216,11 @@ class FreeMind(object):
             exit(-1)
         src_wb = open_workbook(file_name, on_demand=True, formatting_info=True)
 
+        # The following columns are optional
         pfs_phase_col = -1
         pfs_ft_col = -1
+        pmr_title_col = -1
+        pfs_title_col = -1
         col_defined = False
         pmr_pfs_trace_list = []
         pmr_index_list = []
@@ -1230,26 +1234,30 @@ class FreeMind(object):
                 for i, cell in enumerate(src_sheet.col(0)):
                     if not col_defined:
                         for j in range(0, src_sheet.ncols):
-                            if src_sheet.cell_value(i, j).strip() == 'PMR Index':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'pmr index':
                                 pmr_index_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'PMR Description':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'pmr title':
+                                pmr_title_col = j
+                            if src_sheet.cell_value(i, j).strip().lower() == 'pmr description':
                                 pmr_desc_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'Index':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'index':
                                 pfs_index_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'Category':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'pfs title':
+                                pfs_title_col = j
+                            if src_sheet.cell_value(i, j).strip().lower() == 'category':
                                 pfs_cat_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'Phase':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'phase':
                                 pfs_phase_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'Description':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'description':
                                 pfs_desc_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'DEV':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'dev':
                                 pfs_dev_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'DVT':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'dvt':
                                 pfs_dvt_col = j
-                            if src_sheet.cell_value(i, j).strip() == 'SI&T':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'si&t':
                                 pfs_sit_col = j
                                 col_defined = True
-                            if src_sheet.cell_value(i, j).strip() == 'FT':
+                            if src_sheet.cell_value(i, j).strip().lower() == 'ft':
                                 pfs_ft_col = j
                             if src_sheet.cell_value(i, j).strip().lower().endswith('comments'):
                                 pmr_cmt_col = j
@@ -1257,7 +1265,7 @@ class FreeMind(object):
                         pmr_index = src_sheet.cell_value(i, pmr_index_col).strip()
                         pmr_desc = src_sheet.cell_value(i, pmr_desc_col).strip()
                         pmr_ver_team = 'ATP'
-                        if pmr_index != '' and pmr_desc == '':
+                        if pmr_index != '' and pmr_desc == '' and pmr_index.strip().upper() != 'NO PMR':
                             # This is a PMR category
                             pmr_grp_desc = src_sheet.cell_value(i, pmr_index_col).strip()
                             pmr_list.append([pmr_grp_desc, []])
@@ -1274,6 +1282,13 @@ class FreeMind(object):
                         pmr_cmt = src_sheet.cell_value(i, pmr_cmt_col).strip()
                         if pmr_cmt != '':
                             pmr_cmt = 'SE Comments:' + pmr_cmt
+
+                        pmr_title = ''
+                        if pmr_title_col != -1:
+                            pmr_title = src_sheet.cell_value(i, pmr_title_col).strip()
+                        pfs_title = ''
+                        if pfs_title_col != -1:
+                            pfs_title = src_sheet.cell_value(i, pfs_title_col).strip()
 
                         pfs_ft = ''
                         if pfs_ft_col != -1:
@@ -1299,6 +1314,10 @@ class FreeMind(object):
                                 pmr_desc = src_sheet.cell_value(rlo, pmr_desc_col).strip()
                             if (i >= rlo) and (i < rhi) and (pfs_cat_col >= clo) and (pfs_cat_col < chi):
                                 pfs_cat = src_sheet.cell_value(rlo, pfs_cat_col).strip()
+                            if (i >= rlo) and (i < rhi) and (pmr_title_col >= clo) and (pmr_title_col < chi):
+                                pmr_title = src_sheet.cell_value(rlo, pmr_title_col).strip()
+                            if (i >= rlo) and (i < rhi) and (pfs_title_col >= clo) and (pfs_title_col < chi):
+                                pfs_title = src_sheet.cell_value(rlo, pfs_title_col).strip()
 
                         if pmr_index == 'PMR Index':
                             continue
@@ -1315,10 +1334,11 @@ class FreeMind(object):
                                 # This is a new PFS category
                                 pfs_list.append([pfs_cat, []])
                                 pfs_grp_id = len(pfs_list) - 1
-                        # else:
-                        #     if len(pfs_list) != 0:
-                        #         pfs_grp_id = len(pfs_list) - 1
-                        #         pfs_cat = pfs_list[pfs_grp_id][0]
+
+                        if pmr_title == '':
+                            pmr_title = pmr_desc
+                        if pfs_title == '':
+                            pfs_title = pfs_desc
 
                         pfs_ver_team = ''
                         if pfs_dev.upper() == 'Y':
@@ -1331,15 +1351,24 @@ class FreeMind(object):
                             pfs_ver_team += '|FT'
                         pfs_ver_team = '|'.join(pfs_ver_team.split('|')[1:])
 
+                        if src_sheet.cell_value(i, pmr_index_col).strip() in pmr_index_list:
+                            self.logger.error(self.log_prefix + \
+                                             "%s on row %d is duplicated." % \
+                                             (src_sheet.cell_value(i, pmr_index_col).strip(), i+1))
+                        if src_sheet.cell_value(i, pfs_index_col).strip() in pfs_index_list:
+                            self.logger.error(self.log_prefix + \
+                                             "%s on row %d is duplicated." % \
+                                             ( src_sheet.cell_value(i, pfs_index_col).strip(), i+1))
+
                         if pmr_index != '' and pmr_desc != '' and pfs_index != '':
                             # PFS item traced to PMR item
                             if pmr_index not in pmr_index_list:
                                 pmr_list[pmr_grp_id][1].append(
-                                    [pmr_index, pmr_desc, pmr_desc, pmr_ver_team, pmr_cmt, ''])
+                                    [pmr_index, pmr_title, pmr_desc, pmr_ver_team, pmr_cmt, ''])
                                 pmr_index_list.append(pmr_index)
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
-                                    [pfs_index,  pfs_desc, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                    [pfs_index,  pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
                                 pfs_index_list.append(pfs_index)
                             self._add_traceability(pmr_pfs_trace_list, pmr_index, [pfs_index])
                         if pmr_index == '' and pmr_desc == '' and pfs_index != '' and pfs_desc != '':
@@ -1347,7 +1376,7 @@ class FreeMind(object):
                             pmr_index = pre_pmr_index
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
-                                    [pfs_index,  pfs_desc, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                    [pfs_index,  pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
                                 pfs_index_list.append(pfs_index)
                             self._add_traceability(pmr_pfs_trace_list, pmr_index, [pfs_index])
                         if pmr_index == '' and pmr_desc == '' and pfs_index == '' and pfs_desc != '':
@@ -1358,17 +1387,21 @@ class FreeMind(object):
                             # Existing PFS item traced to new PMR item
                             if pmr_index not in pmr_index_list:
                                 pmr_list[pmr_grp_id][1].append(
-                                    [pmr_index, pmr_desc, pmr_desc, pmr_ver_team, pmr_cmt, ''])
+                                    [pmr_index, pmr_title, pmr_desc, pmr_ver_team, pmr_cmt, ''])
                                 pmr_index_list.append(pmr_index)
                             self._add_traceability(pmr_pfs_trace_list, pmr_index, pfs_desc.split('\n'))
                         if pmr_index != '' and pmr_desc != '' and pfs_index == '' and pfs_desc == '':
                             # New PMR item with no PFS item
-                            # pfs_index = pre_pfs_index
                             if pmr_index not in pmr_index_list:
                                 pmr_list[pmr_grp_id][1].append(
-                                    [pmr_index, pmr_desc, pmr_desc, pmr_ver_team, pmr_cmt, ''])
+                                    [pmr_index, pmr_title, pmr_desc, pmr_ver_team, pmr_cmt, ''])
                                 pmr_index_list.append(pmr_index)
-                                # self._add_traceability(pmr_pfs_trace_list, pmr_index, pfs_index)
+                        if pmr_index != '' and pmr_desc == '' and pfs_index != '' and pfs_desc != '':
+                            # New PFS item traced to invalid PMR item
+                            if pfs_index not in pfs_index_list:
+                                pfs_list[pfs_grp_id][1].append(
+                                    [pfs_index,  pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                pfs_index_list.append(pfs_index)
 
                         if pmr_index != '':
                             pre_pmr_index = pmr_index
@@ -1376,10 +1409,10 @@ class FreeMind(object):
                             pre_pfs_index = pfs_index
 
         self._reverse_links(pmr_pfs_trace_list, trace_list)
-        #pprint.pprint(trace_list)
+        #pprint.pprint(pmr_list)
         self.logger.info(self.log_prefix + \
-                         "Successfully extracted requirements from file (%s)." % \
-                         (file_name))
+                         "Successfully extracted requirements from file (%s). %d PMR items and %d PFS items found." % \
+                         (file_name, len(pmr_index_list), len(pfs_index_list)))
         return 0
 
     def _add_traceability(self, trace_list, dst_index, src_index_list):
