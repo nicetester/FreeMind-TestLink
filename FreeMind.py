@@ -10,6 +10,7 @@ import xml.etree.cElementTree  as lxmlET
 
 import testlink
 from xlrd import open_workbook
+from docx import Document
 import pprint
 
 PKG_PATH = './'
@@ -290,7 +291,7 @@ class FreeMind(object):
                 node_order = ET.SubElement(requirement, 'node_order')
                 node_order.append(CDATA(i))
                 description = ET.SubElement(requirement, 'description')
-                description.append(CDATA(item[REQ_DESC]))
+                description.append(CDATA('<p>' + item[REQ_DESC].replace('\n', '</p><p>') + '</p>'))
                 status = ET.SubElement(requirement, 'status')
                 status.append(CDATA('V'))
                 req_type = ET.SubElement(requirement, 'type')
@@ -974,41 +975,49 @@ class FreeMind(object):
 
         return res
 
-    def extract_requirements(self, excel_file, template):
+    def extract_requirements(self, req_file_name, template):
         pmr_list = []
         pfs_list = []
         pfs_pmr_list = []
         pmr_pfs_list = []
         prefixed_pmr_pfs_list = []
 
-        if not os.path.exists(excel_file):
+        if not os.path.exists(req_file_name):
             self.logger.error(self.log_prefix + \
                               "Cannot find the specified file (%s). Action aborted." % \
-                              (excel_file))
+                              (req_file_name))
             return None
 
         if template == 'KreaTV':
-            res = self._read_req_from_xls_kreatv(excel_file, pmr_list, pfs_list, pfs_pmr_list)
+            res = self._read_req_from_xls_kreatv(req_file_name, pmr_list, pfs_list, pfs_pmr_list)
         else:
-            res = self._read_req_from_xls_hgi(excel_file, pmr_list, pfs_list, pfs_pmr_list)
+            if os.path.splitext(req_file_name)[-1] in ['.doc', '.docx']:
+                res = self._read_req_from_docx_hgi(req_file_name, pmr_list, pfs_list, pfs_pmr_list)
+            else:
+                res = self._read_req_from_xls_hgi(req_file_name, pmr_list, pfs_list, pfs_pmr_list)
 
-        res = self._reverse_links(pfs_pmr_list, pmr_pfs_list)
-        res = self._add_req_prefix(pmr_pfs_list, prefixed_pmr_pfs_list)
+        if len(pmr_pfs_list) > 0:
+            res = self._reverse_links(pfs_pmr_list, pmr_pfs_list)
+            res = self._add_req_prefix(pmr_pfs_list, prefixed_pmr_pfs_list)
 
         # Get the filename without extension.
         title = os.path.splitext(os.path.split(self.pmr_url)[-1])[0]
-        res = self._gen_req_xml(pmr_list, title, self.pmr_url, self.pmr_prefix, prefixed_pmr_pfs_list)
+        if len(pmr_list) > 0:
+            res = self._gen_req_xml(pmr_list, title, self.pmr_url, self.pmr_prefix, prefixed_pmr_pfs_list)
         title = os.path.splitext(os.path.split(self.pfs_url)[-1])[0]
         res = self._gen_req_xml(pfs_list, title, self.pfs_url, self.pfs_prefix, prefixed_pmr_pfs_list)
 
         title = os.path.splitext(os.path.split(self.pmr_url)[-1])[0]
-        res = self._gen_req_freemind(pmr_list, title, self.pmr_url.replace('.xml', '.mm'), self.pmr_prefix)
+        if len(pmr_list) > 0:
+            res = self._gen_req_freemind(pmr_list, title, self.pmr_url.replace('.xml', '.mm'), self.pmr_prefix)
         title = os.path.splitext(os.path.split(self.pfs_url)[-1])[0]
         res = self._gen_req_freemind(pfs_list, title, self.pfs_url.replace('.xml', '.mm'), self.pfs_prefix)
-        res = self._build_fm_traceability(self.pfs_url.replace('.xml', '.mm'), self.pmr_url.replace('.xml', '.mm'),
-                                          pfs_pmr_list, self.pfs_url.replace('.xml', '[PFS-PMR].mm'))
-        res = self._build_fm_traceability(self.pmr_url.replace('.xml', '.mm'), self.pfs_url.replace('.xml', '.mm'),
-                                          pmr_pfs_list, self.pmr_url.replace('.xml', '[PMR-PFS].mm'))
+
+        if len(pmr_pfs_list) > 0:
+            res = self._build_fm_traceability(self.pfs_url.replace('.xml', '.mm'), self.pmr_url.replace('.xml', '.mm'),
+                                              pfs_pmr_list, self.pfs_url.replace('.xml', '[PFS-PMR].mm'))
+            res = self._build_fm_traceability(self.pmr_url.replace('.xml', '.mm'), self.pfs_url.replace('.xml', '.mm'),
+                                              pmr_pfs_list, self.pmr_url.replace('.xml', '[PMR-PFS].mm'))
         return res
 
     def _add_req_prefix(self, pmr_pfs_list, prefixed_pmr_pfs_list):
@@ -1201,6 +1210,82 @@ class FreeMind(object):
         self.logger.info(self.log_prefix + \
                          "Successfully generated the FreeMind file %s (Document Title: %s. Document ID Prefix: %s)." % \
                          (output_file, title, prefix))
+        return 0
+
+    def _read_req_from_docx_hgi(self, file_name, pmr_list, pfs_list, trace_list):
+        """
+        Read requirements from HGI SDS template
+        :param file_name:
+        :param pmr_list:
+        :param pfs_list:
+        :param trace_list:
+        """
+        self.logger.info(self.log_prefix + \
+                         "Reading requirements from file (%s). This is going to take a while. Please wait..." % \
+                         file_name)
+
+        if os.path.splitext(file_name)[-1] != '.docx':
+            self.logger.error(self.log_prefix + \
+                              "I am sorry that I can not parse this file. Please convert it to a docx file.")
+            exit(-1)
+        pfs_index_list = []
+        pfs_grp_list = []
+        pfs_grp_id = 0
+        valid_columns = ['Index',	'Category', 	'Description',	'DEV',	'DVT',	'FT',	'SI&T',	'Comment']
+        ver_team_list = ['DEV',	'DVT',	'FT', 'SIT']
+        pfs_ver_team = ''
+        document = Document(file_name)
+        for table in document.tables:
+            invalid_table = False
+            if len(table.columns) != len(valid_columns):
+                continue
+            for i in range(0, len(table.rows)):
+                pfs_item = []
+                for j in range(0, len(table.columns)):
+                    cell = table.cell(i, j)
+                    paragraph_text = ''
+                    for k, paragraph in enumerate(cell.paragraphs):
+                        if i == 0 and paragraph.text != valid_columns[j]:
+                            invalid_table = True
+                            break
+                        elif i > 0:
+                            if k > 0: #paragraph.style.startswith('List'):
+                                paragraph_text += '\n'
+                            paragraph_text += paragraph.text.strip()
+                    pfs_item.append(paragraph_text)
+                    if invalid_table:
+                        break
+                if invalid_table:
+                    break
+                if i == 0 or pfs_item[0] == '':
+                    continue
+                pfs_cat = pfs_item[1]
+                if pfs_cat != '':
+                    if pfs_cat in pfs_grp_list:
+                        pfs_grp_id = pfs_grp_list.index(pfs_cat)
+                    else:
+                        pfs_grp_list.append(pfs_cat)
+                        pfs_list.append([pfs_cat, []])
+                        pfs_grp_id = len(pfs_grp_list) - 1
+                if pfs_item[0] not in pfs_index_list:
+                    pfs_ver_team = ''
+                    for ver_index in range(0, len(ver_team_list)):
+                        if pfs_item[3 + ver_index] == 'Y':
+                            pfs_ver_team += '|' + ver_team_list[ver_index]
+                    pfs_ver_team = '|'.join(pfs_ver_team.split('|')[1:])
+                    pfs_phase = ''
+                    if pfs_item[7].upper().startswith('P'):
+                        pfs_phase = pfs_item[7]
+                    pfs_list[pfs_grp_id][1].append(
+                        [pfs_item[0],  pfs_item[2], pfs_item[2], pfs_ver_team, '', pfs_phase])
+                    pfs_index_list.append(pfs_item[0])
+                else:
+                    self.logger.error(self.log_prefix + "%s is duplicated." % pfs_item[0])
+            if invalid_table:
+                continue
+
+        #pprint.pprint(pfs_list)
+        self.logger.info(self.log_prefix + "%d PFS items and %d categories found in %s." % (len(pfs_index_list), len(pfs_grp_list), file_name))
         return 0
 
     def _read_req_from_xls_hgi(self, file_name, pmr_list, pfs_list, trace_list):
