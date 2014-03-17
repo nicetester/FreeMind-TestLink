@@ -996,7 +996,7 @@ class FreeMind(object):
             else:
                 res = self._read_req_from_xls_hgi(req_file_name, pmr_list, pfs_list, pfs_pmr_list)
 
-        if len(pmr_pfs_list) > 0:
+        if len(pfs_pmr_list) > 0:
             res = self._reverse_links(pfs_pmr_list, pmr_pfs_list)
             res = self._add_req_prefix(pmr_pfs_list, prefixed_pmr_pfs_list)
 
@@ -1013,7 +1013,7 @@ class FreeMind(object):
         title = os.path.splitext(os.path.split(self.pfs_url)[-1])[0]
         res = self._gen_req_freemind(pfs_list, title, self.pfs_url.replace('.xml', '.mm'), self.pfs_prefix)
 
-        if len(pmr_pfs_list) > 0:
+        if len(pfs_pmr_list) > 0:
             res = self._build_fm_traceability(self.pfs_url.replace('.xml', '.mm'), self.pmr_url.replace('.xml', '.mm'),
                                               pfs_pmr_list, self.pfs_url.replace('.xml', '[PFS-PMR].mm'))
             res = self._build_fm_traceability(self.pmr_url.replace('.xml', '.mm'), self.pfs_url.replace('.xml', '.mm'),
@@ -1319,38 +1319,39 @@ class FreeMind(object):
                 for i, cell in enumerate(src_sheet.col(0)):
                     if not col_defined:
                         for j in range(0, src_sheet.ncols):
-                            if src_sheet.cell_value(i, j).strip().lower() == 'pmr index':
+                            cell_text = str(src_sheet.cell_value(i, j)).strip()
+                            if cell_text.lower() == 'pmr index':
                                 pmr_index_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'pmr title':
+                            if cell_text.lower() == 'pmr title':
                                 pmr_title_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'pmr description':
+                            if cell_text.lower() == 'pmr description':
                                 pmr_desc_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'index':
+                            if cell_text.lower() == 'index':
                                 pfs_index_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'pfs title':
+                            if cell_text.lower() == 'pfs title':
                                 pfs_title_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'category':
+                            if cell_text.lower() == 'category':
                                 pfs_cat_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'phase':
+                            if cell_text.lower() == 'phase':
                                 pfs_phase_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'description':
+                            if cell_text.lower() == 'description':
                                 pfs_desc_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'dev':
+                            if cell_text.lower() == 'dev':
                                 pfs_dev_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'dvt':
+                            if cell_text.lower() == 'dvt':
                                 pfs_dvt_col = j
-                            if src_sheet.cell_value(i, j).strip().lower() == 'si&t':
+                            if cell_text.lower() == 'si&t':
                                 pfs_sit_col = j
                                 col_defined = True
-                            if src_sheet.cell_value(i, j).strip().lower() == 'ft':
+                            if cell_text.lower() == 'ft':
                                 pfs_ft_col = j
-                            if src_sheet.cell_value(i, j).strip().lower().endswith('comments'):
+                            if cell_text.lower().endswith('comments'):
                                 pmr_cmt_col = j
                     else:
                         pmr_index = src_sheet.cell_value(i, pmr_index_col).strip()
                         pmr_desc = src_sheet.cell_value(i, pmr_desc_col).strip()
                         pmr_ver_team = 'ATP'
-                        if pmr_index != '' and pmr_desc == '' and pmr_index.strip().upper() != 'NO PMR':
+                        if pmr_index != '' and pmr_desc == '':
                             # This is a PMR category
                             pmr_grp_desc = src_sheet.cell_value(i, pmr_index_col).strip()
                             pmr_list.append([pmr_grp_desc, []])
@@ -1481,8 +1482,8 @@ class FreeMind(object):
                                 pmr_list[pmr_grp_id][1].append(
                                     [pmr_index, pmr_title, pmr_desc, pmr_ver_team, pmr_cmt, ''])
                                 pmr_index_list.append(pmr_index)
-                        if pmr_index != '' and pmr_desc == '' and pfs_index != '' and pfs_desc != '':
-                            # New PFS item traced to invalid PMR item
+                        if pmr_index == '' and pmr_desc == '' and pfs_index != '' and pfs_desc != '':
+                            # New PFS item without PMR item
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
                                     [pfs_index,  pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
