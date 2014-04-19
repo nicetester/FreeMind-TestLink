@@ -4,9 +4,11 @@ import argparse
 import logging.config
 import sys
 import os
+from copy import deepcopy
 from xml.etree import ElementTree as ET
 import xml.dom.minidom as minidom
-import xml.etree.cElementTree  as lxmlET
+import xml.etree.cElementTree as xmlcET
+from lxml import etree as lxmlET
 
 import testlink
 from xlrd import open_workbook
@@ -88,12 +90,13 @@ class FreeMind(object):
         self.tds_url = None
         self.tp_url = None
         self.tc_url = None
+        self.based_tc_url = None
         self.based_tp_url = None
         self.flashobject_swf = None
         self.flashobject_js = None
         self.html_template = None
         self.logger.info(self.log_prefix + \
-                         "FreeMind-TestLink Tool V0.1 for Requirement Extract, Test Design and Test Management.")
+                         "FreeMind-TestLink Tool V0.2 for Requirement Extract, Test Design and Test Management.")
         if cfg_file:
             # Parse the configuration file automatically if it's specified
             self.logger.info(self.log_prefix + \
@@ -109,7 +112,7 @@ class FreeMind(object):
         for item in cfg_root.iter():
             if item.tag == 'testlink':
                 self.testlink_rpc_url = item.attrib['URL'].strip()
-                self.testlink_url = '/'.join(self.testlink_rpc_url.split('/')[:3])
+                self.testlink_url = '/'.join(self.testlink_rpc_url.split('/')[:4])
                 self.testlink_devkey = item.attrib['DEV_KEY'].strip()
                 os.environ['TESTLINK_API_PYTHON_SERVER_URL'] = self.testlink_rpc_url
                 os.environ['TESTLINK_API_PYTHON_DEVKEY'] = self.testlink_devkey
@@ -140,6 +143,8 @@ class FreeMind(object):
                 self.tds_url = self._get_url(file_location, item.text.strip())
             if item.tag == 'tc_url':
                 self.tc_url = self._get_url(file_location, item.text.strip())
+            if item.tag == 'based_tc_url':
+                self.based_tc_url = self._get_url(file_location, item.text.strip())
             if item.tag == 'tp_url':
                 self.tp_url = self._get_url(file_location, item.text.strip())
             if item.tag == 'based_tp_url':
@@ -167,7 +172,7 @@ class FreeMind(object):
             if action_name == 'Link_PFS_with_PMR':
                 pass  #self.link_pfs_pmr(self.pmr_url, self.pfs_url)
             if action_name == 'Link_PFS_with_TCs':
-                pass  #self.link_tc2pfs(self.pfs_url, self.tc_url)
+                self.link_tc2pfs(action.attrib['TEAM'].strip())
             if action_name == 'Generate_TDS':
                 self.gen_tds(self.tds_url, action.attrib['REMOVE_PREFIX'].strip())
             if action_name == 'Link_TDS_with_TCs':
@@ -180,6 +185,10 @@ class FreeMind(object):
                 self.link_tds2tc(self.tc_url, self.tds_url)
             if action_name == 'Create_Test_Plan':
                 self.create_test_plan(self.tp_url, action.attrib['AUTO'].strip(), action.attrib['TEAM'].strip())
+            if action_name == 'Generate_TCs_from_TDS':
+                self.Generate_TCs_from_TDS(action.attrib['NODE_LIST'].strip())
+            if action_name == 'Check_PFS_Traceablity':
+                self.chk_pfs_traceability(action.attrib['TEAM'].strip())
 
         return 0
 
@@ -231,6 +240,9 @@ class FreeMind(object):
         title = os.path.splitext(os.path.split(file_name)[-1])[0]
         self._gen_req_xml([tds_item_list], title, filename, self.tds_prefix)
 
+        self._update_pfs_node_format(tds_root)
+        fm_tree.write(file_name)
+
         if remove_prefix == '1':
             self._remove_node_prefix(tds_root)
             fm_tree.write(file_name)
@@ -244,16 +256,20 @@ class FreeMind(object):
         content = ''
         for child in node:
             if child.tag == 'node':
-                i = i + 1
+                if child.attrib.has_key('LINK') and child.attrib['LINK'].startswith(self.testlink_url):
+                    continue
+                i += 1
                 prefix = str(num) + '.' + str(i)
+                node_id = child.attrib['ID']
                 content = desc + '|' + child.attrib['TEXT']
-                # Make sure this is not the test case or requirement link node since only they are nodes with links
-                if not child.attrib.has_key('LINK'):
-                    # If this is the last node or the node has sub-nodes with links, consider it as a TDS item
-                    if (child.find('node') == None) or (
-                                (child.find('node') <> None) and (child.find('node').attrib.has_key('LINK'))):
-                        item_list.append([prefix[4:], '|'.join(content.split('|')[2:]), '', 'SIT'])
-                    self._get_tds_items(child, prefix, content, item_list)
+                # If this is the last TDS node
+                if self._last_tds_node(child):
+                    # Keep the TDS title as long as possible to about 100 characters (limitation in TestLink)
+                    item_list.append(
+                        [node_id, prefix[4:] + PREFIX_TITLE_SEP + '|'.join(content[-100:].split('|')[2:]), \
+                         prefix[4:] + PREFIX_TITLE_SEP + '|'.join(content.split('|')[2:]), 'SIT'])
+                    continue
+                self._get_tds_items(child, prefix, content, item_list)
 
         return res
 
@@ -379,12 +395,13 @@ class FreeMind(object):
 
         fm_tree = ET.parse(tds_file)
         fm_root = fm_tree.getroot()
-        self._remove_node_prefix(fm_root)
-        self._add_node_prefix(fm_root, '0')
-        self._remove_link_node(fm_root)
+        #self._remove_node_prefix(fm_root)
+        #self._add_node_prefix(fm_root, '0')
+        #self._remove_link_node(fm_root)
         fm_tree.write(tds_file)
-
-        res = self._build_fm_traceability(tds_file, tc_fm_file, req_tc_list, tds_file.replace('.mm', '[TDS-TC].mm'))
+        #pprint.pprint(req_tc_list)
+        res = self._build_fm_traceability(tds_file, tc_fm_file, req_tc_list, tds_file.replace('.mm', '[TDS-TC].mm'),
+                                          True)
 
         return res
 
@@ -410,7 +427,7 @@ class FreeMind(object):
         return None
 
     def _read_tc_from_xml(self, xml_file, fm_file, tc_req_list):
-        tc_tree = lxmlET.parse(xml_file)
+        tc_tree = xmlcET.parse(xml_file)
         tc_root = tc_tree.getroot()
 
         # Build the FreeMind for test case
@@ -421,11 +438,11 @@ class FreeMind(object):
                          "Getting traceability information from file %s" % \
                          (xml_file))
         prefix_list = [self.pmr_prefix, self.tds_prefix]
-        prefix_list.extend(self.pfs_prefix.split(
-            ','))  #Could be multiple PFS prefix since some requirements will be reused between projects.
+        #Could be multiple PFS prefix since some requirements will be reused between projects.
+        prefix_list.extend(self.pfs_prefix.split('|'))
         for tc in tc_root.iter('testcase'):
             req_links = []
-            tc_id = self.repo_prefix + '-' + tc.find('externalid').text
+            tc_id = self.repo_prefix + '-' + str(tc.find('externalid').text)
             for req in tc.iter('requirement'):
                 doc_id = req.find('doc_id').text
 
@@ -443,7 +460,7 @@ class FreeMind(object):
         ''' req_list is a list like [GROUP_NAME, [ [REQ_ID, REQ_TITLE, REQ_DESC, REQ_VER_TEAM], ... ] ]
             REQ_ID and REQ_TITLE will be combined as the node text and REQ_DESC will be displayed as comments
         '''
-        tc_tree = lxmlET.parse(tc_file)
+        tc_tree = xmlcET.parse(tc_file)
         tc_root = tc_tree.getroot()
 
         freemind = ET.Element('map', {'version': '1.0.1'})
@@ -466,7 +483,9 @@ class FreeMind(object):
                 #add a node in Freemind and call again.
                 testsuite_node = ET.SubElement(fm_root, 'node',
                                                {'COLOR': '#990000', 'FOLDED': "true", 'TEXT': child.attrib['name']})
+                ET.SubElement(testsuite_node, 'icon', {'BUILTIN': 'folder'})
                 self._add_tc_details(child, testsuite_node)
+                continue
             if child.tag == 'testcase':
                 #add a node in Freemind
                 valid_tc = False
@@ -477,7 +496,7 @@ class FreeMind(object):
                 regression_level = ''
                 for item in child:
                     if item.tag == 'externalid':
-                        tc_id = item.text
+                        tc_id = str(item.text)
                         node_text = self.repo_prefix + '-' + tc_id + PREFIX_TITLE_SEP + node_text
                     if item.tag == 'summary':
                         node_comment = '<p>Summary:</p>' + str(item.text) + '<p></p>'
@@ -497,17 +516,20 @@ class FreeMind(object):
                     if item.tag == 'custom_fields':
                         for custom_field in item:
                             if list(custom_field)[0].text == 'HGI Regression Level':
-                                regression_level = 6 - len(list(custom_field)[1].text.split('|'))
-                                #Enable this once the test case is linked with requirements
-                                #                    if item.tag == 'requirements':
-                                #                        for requirement in item:
-                                #                            doc_id = list(requirement)[1].text
-                                #                            for prefix in [self.pfs_prefix, self.pmr_prefix, self.tds_prefix]:
-                                #                                if len(doc_id.split(prefix)) == 2:
-                                #                                    valid_tc = True
-                                #                                    break
-                                #                if not valid_tc:
-                                #                    continue
+                                if list(custom_field)[1].text is None:
+                                    regression_level = 0
+                                else:
+                                    regression_level = 6 - len(list(custom_field)[1].text.split('|'))
+                                    #Enable this once the test case is linked with requirements
+                                    #                    if item.tag == 'requirements':
+                                    #                        for requirement in item:
+                                    #                            doc_id = list(requirement)[1].text
+                                    #                            for prefix in [self.pfs_prefix, self.pmr_prefix, self.tds_prefix]:
+                                    #                                if len(doc_id.split(prefix)) == 2:
+                                    #                                    valid_tc = True
+                                    #                                    break
+                                    #                if not valid_tc:
+                                    #                    continue
                 node_comment = node_comment + '<p></p>' + expected_results
                 node_link = self.testlink_url + '/linkto.php?tprojectPrefix=' + self.repo_prefix + '&item=testcase&id=' + self.repo_prefix + '-' + tc_id
                 tc_node = ET.SubElement(fm_root, 'node', {'COLOR': '#990000', 'LINK': node_link, 'TEXT': node_text})
@@ -536,7 +558,7 @@ class FreeMind(object):
 
         self.fm_file = fm_file
         tds_title = os.path.split(os.path.splitext(self.fm_file)[0])[1]
-        self.fm_tree = lxmlET.parse(fm_file)
+        self.fm_tree = xmlcET.parse(fm_file)
         fm_root = self.fm_tree.getroot()
 
         #parser = lxmlET.XMLParser(False)
@@ -617,6 +639,275 @@ class FreeMind(object):
     #            res = self._create_test_plan_in_tl(tp_name, new_tc_list)
     #
     #        return res
+
+    def chk_pfs_traceability(self, ver_team):
+        tc_pfs_dict = {}
+        pfs_tc_dict = {}
+        pfs_tree = lxmlET.parse(self.pfs_url.replace('.xml', '.mm'))
+        pfs_root = pfs_tree.getroot()
+
+        tds_tree = lxmlET.parse(self.tds_url)
+        tds_root = tds_tree.getroot()
+        res = self._get_tc_pfs_traceability(tds_root, tc_pfs_dict)
+        self._reverse_dict(tc_pfs_dict, pfs_tc_dict)
+
+        ver_team = ver_team.split('|')
+        ver_team_list = [item.strip() for item in ver_team]
+        for pfs_node in pfs_root.iter('node'):
+            if pfs_node.attrib.has_key('LINK') and pfs_node.attrib['LINK'].startswith(self.testlink_url) and \
+                            pfs_node.attrib['LINK'].count('req&id') > 0:
+                pfs_ver_team = pfs_node.attrib['TEXT'].split(PREFIX_TITLE_SEP)[1]
+                pfs_ver_team = pfs_ver_team.split('|')
+                pfs_id = pfs_node.attrib['LINK'].split('=')[-1]
+                for ver_team in ver_team_list:
+                    if ver_team in pfs_ver_team:
+                        if not pfs_tc_dict.has_key(pfs_id):
+                            self.logger.error(self.log_prefix + \
+                                              "PFS item (%s) with verification team (%s) doesn't have a traceable TDS item. Highlights it with red backgroud color" % \
+                                              (pfs_id, pfs_ver_team))
+                            pfs_node.set('BACKGROUND_COLOR', '#ff0000')
+                        else:
+                            self.logger.info(self.log_prefix + \
+                                             "PFS item (%s) with verification team (%s) has %d TDS items traced." % \
+                                             (pfs_id, pfs_ver_team, len(pfs_tc_dict[pfs_id])))
+
+        pfs_tree.write(self.pfs_url.replace('.xml', '[PFS-TDS].mm'))
+
+    def _reverse_dict(self, src_dict, dst_dict):
+        for id, value_list in src_dict.iteritems():
+            for value in value_list:
+                if dst_dict.has_key(value):
+                    dst_dict[value].append(id)
+                else:
+                    dst_dict[value] = [id]
+
+
+    def Generate_TCs_from_TDS(self, node_list):
+        """
+        It will generate test cases from the last tds item node. It would be empty test case in testlink.
+        However, it will create the traceability between this test case and PFS/TDS automatically in testlink.
+        The generated xml file need to be imported into testlink manually.
+        """
+        tc_tds_dict = {}
+        tc_pfs_dict = {}
+        valid_node_list = []
+
+        fm_tree = lxmlET.parse(self.tds_url)
+        tds_root = fm_tree.getroot()
+        node_list = node_list.split('|')
+        node_list = [item.strip() for item in node_list]
+        # Create traceability dictionary for last TDS nodes. (Including traceability to both PFS and TDS)
+        res = self._get_tc_tds_traceability(tds_root, tc_tds_dict)
+        res = self._get_tc_pfs_traceability(tds_root, tc_pfs_dict)
+        #pprint.pprint(tc_pfs_dict)
+        # Generate test cases automatically with traceability
+        tc_root = lxmlET.Element('testsuite', {'name': ''})
+        lxmlET.SubElement(tc_root, 'node_order').text = lxmlET.CDATA('')
+        lxmlET.SubElement(tc_root, 'details').text = lxmlET.CDATA('')
+        res = self._gen_tc_xml_from_tds(tc_root, tds_root, tc_tds_dict, tc_pfs_dict, node_list)
+        f = open(self.tc_url, 'w')
+        f.write(lxmlET.tostring(tc_root, xml_declaration=True, encoding='UTF-8', pretty_print=True))
+        f.close
+        res = self._update_pfs_node_format(tds_root)
+        fm_tree.write(self.tds_url)
+
+    def _update_pfs_node_format(self, tds_root):
+        for tds_item in tds_root.iter('node'):
+            if tds_item.attrib.has_key('LINK') and tds_item.attrib['LINK'].startswith(self.testlink_url) and \
+                            tds_item.attrib['LINK'].count('req&id') > 0:
+                tds_item.attrib['TEXT'] = tds_item.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0]
+                tds_item.attrib['BACKGROUND_COLOR'] = '#ffffff'
+                tds_item.attrib['COLOR'] = '#00b439'
+                tds_item.attrib['STYLE'] = 'bubble'
+                font = tds_item.find('font')
+                if font is not None:
+                    font.attrib['NAME'] = 'SansSerif'
+                    font.attrib['SIZE'] = '8'
+                else:
+                    lxmlET.SubElement(tds_item, 'font', {'NAME': 'SansSerif', 'SIZE': '8'})
+                edge = tds_item.find('edge')
+                if edge is not None:
+                    edge.attrib['STYLE'] = 'bezier'
+                    edge.attrib['WIDTH'] = 'thin'
+                else:
+                    lxmlET.SubElement(tds_item, 'edge', {'STYLE': 'bezier', 'WIDTH': 'thin'})
+
+
+    def _gen_tc_xml_from_tds(self, ts_node, root_node, tc_tds_dict, tc_pfs_dict, node_list):
+        if node_list == ['']:
+            self._gen_tc_xml_from_tds_node(ts_node, root_node, tc_tds_dict, tc_pfs_dict)
+            return
+        for tds_item in root_node.iter('node'):
+            if tds_item.attrib['ID'] in node_list:
+                child_ts_node = lxmlET.SubElement(ts_node, 'testsuite', {'name': tds_item.attrib['TEXT'].strip()})
+                lxmlET.SubElement(child_ts_node, 'node_order').text = lxmlET.CDATA('')
+                lxmlET.SubElement(child_ts_node, 'details').text = lxmlET.CDATA('')
+                self._gen_tc_xml_from_tds_node(child_ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+
+    def _gen_tc_xml_from_tds_node(self, ts_node, root_node, tc_tds_dict, tc_pfs_dict):
+        for tds_item in root_node.findall('node'):
+            if tds_item.attrib.has_key('LINK') and tds_item.attrib['LINK'].startswith(self.testlink_url):
+                continue
+            is_testsuite = False
+            for item_icon in tds_item.findall('icon'):
+                if item_icon.attrib['BUILTIN'] == 'folder':
+                    child_ts_node = lxmlET.SubElement(ts_node, 'testsuite', {'name': tds_item.attrib['TEXT'].strip()})
+                    lxmlET.SubElement(child_ts_node, 'node_order').text = lxmlET.CDATA('')
+                    lxmlET.SubElement(child_ts_node, 'details').text = lxmlET.CDATA('')
+                    #ts_node = child_ts_node
+                    is_testsuite = True
+                    break
+            if is_testsuite:
+                self._gen_tc_xml_from_tds_node(child_ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                continue
+            if not self._last_tds_node(tds_item):
+                self._gen_tc_xml_from_tds_node(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                continue
+            # This must be the last TDS node
+            tc_list = []
+            res = self._get_linked_tc(tds_item, tc_list)
+            if not tc_list:
+                # If this node doesn't have a test case associated, create a new test case with traceability.
+                res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                continue
+            # If this node already have test cases associated, update its traceability if necessary.
+            # Get the test case from original xml file and copy it into the new xml file
+            for tc_id in tc_list:
+                tc_node = self._get_tc_node_from_xml(self.based_tc_url, tc_id)
+                res = self._update_tc_node(tc_node, tc_id, tds_item, tc_tds_dict, tc_pfs_dict)
+                ts_node.append(tc_node)
+
+    def _get_tc_node_from_xml(self, xml_file, tc_id):
+        parser = lxmlET.XMLParser(strip_cdata=False)
+        tc_root = lxmlET.parse(xml_file, parser)
+        # fm_tree = lxmlET.parse(xml_file)
+        # tc_root = fm_tree.getroot()
+        for tc_node in tc_root.iter('testcase'):
+            if tc_node.find('externalid').text == tc_id.split('-')[-1]:
+                return tc_node
+
+    def _update_tc_node(self, tc_node, tc_id, tds_item, tc_tds_dict, tc_pfs_dict):
+        """
+        Update traceability in this test case node
+        TODO: If this test case is copied from another project (Can be known from tc_id),
+        need to update internalid, node_order, externalid, version as well
+        """
+        requirements = tc_node.find('requirements')
+        for requirement in requirements.findall('requirement'):
+            requirements.remove(requirement)
+        requirement = lxmlET.SubElement(requirements, 'requirement')
+        lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+            os.path.splitext(os.path.split(self.tds_url)[-1])[0])
+        lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(tc_tds_dict[tds_item.attrib['ID']][0])
+        if not tc_pfs_dict.has_key(tds_item.attrib['ID']):
+            return
+        for pfs_id in tc_pfs_dict[tds_item.attrib['ID']]:
+            requirement = lxmlET.SubElement(requirements, 'requirement')
+            lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+                os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
+            lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
+
+    def _add_dummy_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict):
+        testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
+        lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
+        lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA('1')
+        lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA('3')
+
+        steps = lxmlET.SubElement(testcase, 'steps')
+        # step = lxmlET.SubElement(steps, 'step')
+        # lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA('1')
+        # lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA('')
+        # lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA('')
+        # lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA('1')
+        #
+        # custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
+        # custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        # lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Regression Level')
+        # lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('')
+        # custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        # lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Test Team')
+        # lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('SIT')
+        # custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        # lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed')
+        # lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('')
+        # custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        # lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed Version')
+        # lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('')
+        # custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        # lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Review Info')
+        # lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('')
+
+        requirements = lxmlET.SubElement(testcase, 'requirements')
+        requirement = lxmlET.SubElement(requirements, 'requirement')
+        lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+            os.path.splitext(os.path.split(self.tds_url)[-1])[0])
+        lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(tc_tds_dict[tds_item.attrib['ID']][0])
+        if not tc_pfs_dict.has_key(tds_item.attrib['ID']):
+            return
+        for pfs_id in tc_pfs_dict[tds_item.attrib['ID']]:
+            requirement = lxmlET.SubElement(requirements, 'requirement')
+            lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+                os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
+            lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
+
+    def _get_tc_pfs_traceability(self, root_node, tc_pfs_dict):
+        for tds_node in root_node.iter('node'):
+            if tds_node.attrib.has_key('LINK'):
+                if tds_node.attrib['LINK'].startswith(self.testlink_url) and tds_node.attrib['LINK'].count(
+                        'req&id') > 0:
+                    # This is a PFS node, so all valid TDS items under the parent node of this node will have this PFS ID as traceability.
+                    self._add_tc_pfs_traceability(tds_node.getparent(), tc_pfs_dict,
+                                                  tds_node.attrib['LINK'].split('=')[-1])
+
+    def _add_tc_pfs_traceability(self, root_node, tc_pfs_dict, pfs_id):
+        for tds_item in root_node.iter('node'):
+            if not self._last_tds_node(tds_item):
+                continue
+            if tc_pfs_dict.has_key(tds_item.attrib['ID']):
+                duplicated_pfs = False
+                for orig_pfs_id in tc_pfs_dict[tds_item.attrib['ID']]:
+                    if orig_pfs_id == pfs_id:
+                        duplicated_pfs = True
+                        self.logger.warning(self.log_prefix + \
+                                            "Duplicated PFS item (%s) found for TDS node (%s:%s)" % \
+                                            (pfs_id, tds_item.attrib['ID'], tds_item.attrib['TEXT']))
+                        break
+                if not duplicated_pfs:
+                    tc_pfs_dict[tds_item.attrib['ID']].append(pfs_id)
+            else:
+                tc_pfs_dict[tds_item.attrib['ID']] = [pfs_id]
+
+    def _get_tc_tds_traceability(self, root_node, tc_tds_dict):
+        for tds_item in root_node.iter('node'):
+            if not self._last_tds_node(tds_item):
+                continue
+            # If this is the last node and a node with only PFS items (we called 'valid tds item'), then this is a valid node that will be imported into testlink for traceability.
+            if not tc_tds_dict.has_key(tds_item.attrib['ID']):
+                tc_tds_dict[tds_item.attrib['ID']] = [self.tds_prefix + tds_item.attrib['ID']]
+                #print tds_item.attrib['TEXT']
+            else:
+                self.logger.error(self.log_prefix + \
+                                  "Duplicated TDS item (%s) found. Please check your FreeMind file in text mode." % \
+                                  (tds_item.attrib['ID']))
+
+    def _last_tds_node(self, node):
+        if node.attrib.has_key('LINK') and node.attrib['LINK'].startswith(self.testlink_url):
+            # This maybe a PFS/TC item, we need ignore it
+            return False
+        for child in node.findall('node'):
+            if not (child.attrib.has_key('LINK') and child.attrib['LINK'].startswith(self.testlink_url)):
+                return False
+        return True
+
+    def _get_linked_tc(self, tds_item, tc_list):
+        for child in tds_item.findall('node'):
+            if child.attrib.has_key('LINK') and child.attrib['LINK'].startswith(self.testlink_url) and child.attrib[
+                'LINK'].count('testcase&id') > 0:
+                tc_list.append(child.attrib['LINK'].split('=')[-1].strip())
 
     def create_test_plan(self, tp_url, auto_sync, ver_team):
         ''' The inputs could be TDS aided test planning, Test Suites aided test planning or PFS aided test planning.                        
@@ -919,15 +1210,18 @@ class FreeMind(object):
     def _remove_node_prefix(self, node):
         for child in node.iter('node'):
             # Make sure this is not the test case or requirement link node since only they are nodes with links
-            if not child.attrib.has_key('LINK'):
-                # If the node text is started with a number, then we consider it having added prefix
-                if child.attrib['TEXT'][0].isdigit:
-                    # Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix
-                    if (child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> child.attrib['TEXT']):
-                        self.logger.debug(self.log_prefix + \
-                                          "Prefix of node (%s) has been removed" % \
-                                          (child.attrib['TEXT']))
-                        child.attrib['TEXT'] = ''.join(child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[1:])
+            if child.attrib.has_key('LINK') and child.attrib['LINK'].startswith(self.testlink_url):
+                continue
+            # If the node text is started with a number, then we consider it having added prefix
+            # if child.attrib['TEXT'][0].isdigit:
+            #     # Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix
+            #     if (child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> child.attrib['TEXT']):
+            if child.attrib['TEXT'].count(PREFIX_TITLE_SEP) == 0:
+                continue
+            self.logger.debug(self.log_prefix + \
+                              "Prefix of node (%s) has been removed" % \
+                              (child.attrib['TEXT']))
+            child.attrib['TEXT'] = ''.join(child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[1:])
 
         return 0
 
@@ -948,30 +1242,16 @@ class FreeMind(object):
         '''
         res = 0
         i = 0
-        for child in node:
-            if child.tag == 'node':
-                i = i + 1
-                prefix = str(num) + '.' + str(i)
-                # Make sure this is not the test case or requirement link node since only they are nodes with links
-                if not child.attrib.has_key('LINK'):
-                    # If the node text is started with a number, then we consider it has already been added prefix
-                    if child.attrib['TEXT'][0].isdigit:
-                        # Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix
-                        if (child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> child.attrib['TEXT']):
-                            if child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> prefix[4:]:
-                                self.logger.error(self.log_prefix + \
-                                                  "The original prefix (%s) in node (%s) doesn't match with the actual prefix (%s). This could be caused by a wrong order/position of this node." % \
-                                                  (
-                                                      child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0],
-                                                      child.attrib['TEXT'],
-                                                      prefix[4:]))
-                                return None
-                                #child.attrib['TEXT'] = prefix[4:] + ' ' + ''.join(child.attrib['TEXT'].split(' ')[1:])                             
-                        else:
-                            child.attrib['TEXT'] = prefix[4:] + PREFIX_TITLE_SEP + child.attrib['TEXT']
-                    else:
-                        child.attrib['TEXT'] = prefix[4:] + PREFIX_TITLE_SEP + child.attrib['TEXT']
-                res = self._add_node_prefix(child, prefix)
+        for child in node.findall('node'):
+            if child.attrib.has_key('LINK') and child.attrib['LINK'].startswith(self.testlink_url):
+                continue
+            i += 1
+            prefix = str(num) + '.' + str(i)
+            if child.attrib['TEXT'].count(PREFIX_TITLE_SEP) > 0:
+                child.attrib['TEXT'] = prefix[4:] + PREFIX_TITLE_SEP + child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[1:]
+            else:
+                child.attrib['TEXT'] = prefix[4:] + PREFIX_TITLE_SEP + child.attrib['TEXT']
+            res = self._add_node_prefix(child, prefix)
 
         return res
 
@@ -1052,7 +1332,7 @@ class FreeMind(object):
                     #pprint.pprint(pmr_pfs_list)
         return 0
 
-    def _build_fm_traceability(self, dst_fm, src_fm, link_list, output_file):
+    def _build_fm_traceability(self, dst_fm, src_fm, link_list, output_file, tds_file=False):
         ''' This function is using to two FreeMind maps by using the traceability list in link_list[]
             link_list[] has the format of either [PFS_ID, [PMR_ID1, PMRID2,...]] or [PMR_ID, [PFS_ID1, PFS_ID2]] depends on 
             what's the destination FreeMind map.
@@ -1066,21 +1346,18 @@ class FreeMind(object):
         new_added_nodes = []
 
         for dst_node in dst_fm_root.iter('node'):
-            last_node = True
-            for child in dst_node.findall('node'):
-                self.logger.debug(self.log_prefix + \
-                                  "This node (%s) has the child (%s) in file %s." % \
-                                  (dst_node.attrib['TEXT'], child.attrib['TEXT'], dst_fm))
-                last_node = False
-                break
-            self.logger.debug(self.log_prefix + \
-                              "This node (%s) is the last node? %s." % \
-                              (dst_node.attrib['TEXT'], last_node))
-            if not last_node:
-                continue
+            if tds_file:
+                if not self._last_tds_node(dst_node):
+                    continue
+            else:
+                if dst_node.find('node') is not None:
+                    continue
             # Please note the new added nodes will be looped through iter again so we need to ignore that by using new_added_nodes[]
             if dst_node.attrib['TEXT'] not in new_added_nodes:
-                dst_id = dst_node.attrib['TEXT'].strip().split(PREFIX_TITLE_SEP)[0]
+                if tds_file:
+                    dst_id = dst_node.attrib['ID'].strip()
+                else:
+                    dst_id = dst_node.attrib['TEXT'].strip().split(PREFIX_TITLE_SEP)[0]
                 traceability_links = []
                 for traceability in link_list:
                     if dst_id == traceability[0]:
@@ -1178,35 +1455,40 @@ class FreeMind(object):
         self.logger.info(self.log_prefix + \
                          "Generating the FreeMind file %s (Document Title: %s. Document ID Prefix: %s)." % \
                          (output_file, title, prefix))
-        freemind = ET.Element('map', {'version': '1.0.1'})
+        freemind = lxmlET.Element('map', {'version': '1.0.1'})
 
-        ET.SubElement(freemind, 'attribute_registry', {'SHOW_ATTRIBUTES': 'hide'})
-        root_node = ET.SubElement(freemind, 'node', {'BACKGROUND_COLOR': '#0000ff', 'COLOR': '#000000', 'TEXT': title})
-        ET.SubElement(root_node, 'font', {'NAME': 'SansSerif', 'SIZE': '20'})
-        ET.SubElement(root_node, 'hook', {'NAME': 'accessories/plugins/AutomaticLayout.properties'})
+        lxmlET.SubElement(freemind, 'attribute_registry', {'SHOW_ATTRIBUTES': 'hide'})
+        root_node = lxmlET.SubElement(freemind, 'node',
+                                      {'BACKGROUND_COLOR': '#0000ff', 'COLOR': '#000000', 'TEXT': title})
+        lxmlET.SubElement(root_node, 'font', {'NAME': 'SansSerif', 'SIZE': '20'})
+        lxmlET.SubElement(root_node, 'hook', {'NAME': 'accessories/plugins/AutomaticLayout.properties'})
 
         req_count = 0
         for group in req_list:
-            group_node = ET.SubElement(root_node, 'node', {'COLOR': '#990000', 'FOLDED': "true", 'TEXT': group[0]})
+            group_node = lxmlET.SubElement(root_node, 'node', {'COLOR': '#990000', 'FOLDED': "true", 'TEXT': group[0]})
             i = 0
             for i, req_item in enumerate(group[1]):
-                node_text = req_item[REQ_ID] + PREFIX_TITLE_SEP + req_item[REQ_TITLE]
+                node_text = req_item[REQ_ID] + PREFIX_TITLE_SEP + req_item[REQ_VER_TEAM] + PREFIX_TITLE_SEP + req_item[
+                    REQ_TITLE]
                 node_comment = req_item[REQ_DESC]
                 node_link = self.testlink_url + '/linkto.php?tprojectPrefix=' + self.repo_prefix + '&item=req&id=' + prefix + \
                             req_item[REQ_ID]
-                req_node = ET.SubElement(group_node, 'node', {'COLOR': '#990000', 'LINK': node_link, 'TEXT': node_text})
-                richcontent = ET.SubElement(req_node, 'richcontent', {'TYPE': 'NOTE'})
-                html = ET.SubElement(richcontent, 'html')
-                ET.SubElement(richcontent, 'head')
-                body = ET.SubElement(html, 'body')
-                comment = ET.SubElement(body, 'p')
+                req_node = lxmlET.SubElement(group_node, 'node',
+                                             {'COLOR': '#990000', 'LINK': node_link, 'TEXT': node_text})
+                richcontent = lxmlET.SubElement(req_node, 'richcontent', {'TYPE': 'NOTE'})
+                html = lxmlET.SubElement(richcontent, 'html')
+                lxmlET.SubElement(richcontent, 'head')
+                body = lxmlET.SubElement(html, 'body')
+                comment = lxmlET.SubElement(body, 'p')
                 comment.text = node_comment
             i = i + 1
             req_count = req_count + i
             group_node.attrib['TEXT'] = group_node.attrib['TEXT'] + '[' + str(i) + ']'
 
         root_node.attrib['TEXT'] = root_node.attrib['TEXT'] + '[' + str(req_count) + ']'
-        ET.ElementTree(freemind).write(output_file)
+
+        #self._update_pfs_node_format(freemind)
+        lxmlET.ElementTree(freemind).write(output_file)
         self.logger.info(self.log_prefix + \
                          "Successfully generated the FreeMind file %s (Document Title: %s. Document ID Prefix: %s)." % \
                          (output_file, title, prefix))
@@ -1231,8 +1513,8 @@ class FreeMind(object):
         pfs_index_list = []
         pfs_grp_list = []
         pfs_grp_id = 0
-        valid_columns = ['Index',	'Category', 	'Description',	'DEV',	'DVT',	'FT',	'SI&T',	'Comment']
-        ver_team_list = ['DEV',	'DVT',	'FT', 'SIT']
+        valid_columns = ['Index', 'Category', 'Description', 'DEV', 'DVT', 'FT', 'SI&T', 'Comment']
+        ver_team_list = ['DEV', 'DVT', 'FT', 'SIT']
         pfs_ver_team = ''
         document = Document(file_name)
         for table in document.tables:
@@ -1249,7 +1531,7 @@ class FreeMind(object):
                             invalid_table = True
                             break
                         elif i > 0:
-                            if k > 0: #paragraph.style.startswith('List'):
+                            if k > 0:  #paragraph.style.startswith('List'):
                                 paragraph_text += '\n'
                             paragraph_text += paragraph.text.strip()
                     pfs_item.append(paragraph_text)
@@ -1277,7 +1559,7 @@ class FreeMind(object):
                     if pfs_item[7].upper().startswith('P'):
                         pfs_phase = pfs_item[7]
                     pfs_list[pfs_grp_id][1].append(
-                        [pfs_item[0],  pfs_item[2], pfs_item[2], pfs_ver_team, '', pfs_phase])
+                        [pfs_item[0], pfs_item[2], pfs_item[2], pfs_ver_team, '', pfs_phase])
                     pfs_index_list.append(pfs_item[0])
                 else:
                     self.logger.error(self.log_prefix + "%s is duplicated." % pfs_item[0])
@@ -1285,7 +1567,8 @@ class FreeMind(object):
                 continue
 
         #pprint.pprint(pfs_list)
-        self.logger.info(self.log_prefix + "%d PFS items and %d categories found in %s." % (len(pfs_index_list), len(pfs_grp_list), file_name))
+        self.logger.info(self.log_prefix + "%d PFS items and %d categories found in %s." % (
+            len(pfs_index_list), len(pfs_grp_list), file_name))
         return 0
 
     def _read_req_from_xls_hgi(self, file_name, pmr_list, pfs_list, trace_list):
@@ -1315,6 +1598,7 @@ class FreeMind(object):
             if s.name.find('Specification') != -1:
                 pmr_grp_id = 0
                 pfs_grp_id = 0
+                pre_pmr_index = ''
 
                 for i, cell in enumerate(src_sheet.col(0)):
                     if not col_defined:
@@ -1439,12 +1723,12 @@ class FreeMind(object):
 
                         if src_sheet.cell_value(i, pmr_index_col).strip() in pmr_index_list:
                             self.logger.error(self.log_prefix + \
-                                             "%s on row %d is duplicated." % \
-                                             (src_sheet.cell_value(i, pmr_index_col).strip(), i+1))
+                                              "%s on row %d is duplicated." % \
+                                              (src_sheet.cell_value(i, pmr_index_col).strip(), i + 1))
                         if src_sheet.cell_value(i, pfs_index_col).strip() in pfs_index_list:
                             self.logger.error(self.log_prefix + \
-                                             "%s on row %d is duplicated." % \
-                                             ( src_sheet.cell_value(i, pfs_index_col).strip(), i+1))
+                                              "%s on row %d is duplicated." % \
+                                              ( src_sheet.cell_value(i, pfs_index_col).strip(), i + 1))
 
                         if pmr_index != '' and pmr_desc != '' and pfs_index != '':
                             # PFS item traced to PMR item
@@ -1454,7 +1738,7 @@ class FreeMind(object):
                                 pmr_index_list.append(pmr_index)
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
-                                    [pfs_index,  pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                    [pfs_index, pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
                                 pfs_index_list.append(pfs_index)
                             self._add_traceability(pmr_pfs_trace_list, pmr_index, [pfs_index])
                         if pmr_index == '' and pmr_desc == '' and pfs_index != '' and pfs_desc != '':
@@ -1462,13 +1746,15 @@ class FreeMind(object):
                             pmr_index = pre_pmr_index
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
-                                    [pfs_index,  pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                    [pfs_index, pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
                                 pfs_index_list.append(pfs_index)
-                            self._add_traceability(pmr_pfs_trace_list, pmr_index, [pfs_index])
+                            if pre_pmr_index <> '':
+                                self._add_traceability(pmr_pfs_trace_list, pmr_index, [pfs_index])
                         if pmr_index == '' and pmr_desc == '' and pfs_index == '' and pfs_desc != '':
                             # Traceability only PFS item traced to previous PMR item
                             pmr_index = pre_pmr_index
-                            self._add_traceability(pmr_pfs_trace_list, pmr_index, pfs_desc.split('\n'))
+                            if pre_pmr_index <> '':
+                                self._add_traceability(pmr_pfs_trace_list, pmr_index, pfs_desc.split('\n'))
                         if pmr_index != '' and pmr_desc != '' and pfs_index == '' and pfs_desc != '':
                             # Existing PFS item traced to new PMR item
                             if pmr_index not in pmr_index_list:
@@ -1486,7 +1772,7 @@ class FreeMind(object):
                             # New PFS item without PMR item
                             if pfs_index not in pfs_index_list:
                                 pfs_list[pfs_grp_id][1].append(
-                                    [pfs_index,  pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
+                                    [pfs_index, pfs_title, pfs_desc, pfs_ver_team, '', pfs_phase])
                                 pfs_index_list.append(pfs_index)
 
                         if pmr_index != '':
