@@ -169,6 +169,8 @@ class FreeMind(object):
                              (action_name, cfg_file))
             if action_name == 'Extract_Requirements':
                 self.extract_requirements(self.requirements_url, action.attrib['TEMPLATE'].strip())
+            if action_name == 'Extract_TestCases':
+                self.extract_tc_from_xls(self.tc_url, action.attrib['SHEET_NAME'].strip(), action.attrib['REVIEW_INFO'].strip())
             if action_name == 'Link_PFS_with_PMR':
                 pass  #self.link_pfs_pmr(self.pmr_url, self.pfs_url)
             if action_name == 'Link_PFS_with_TCs':
@@ -186,7 +188,7 @@ class FreeMind(object):
             if action_name == 'Create_Test_Plan':
                 self.create_test_plan(self.tp_url, action.attrib['AUTO'].strip(), action.attrib['TEAM'].strip())
             if action_name == 'Generate_TCs_from_TDS':
-                self.Generate_TCs_from_TDS(action.attrib['NODE_LIST'].strip())
+                self.Generate_TCs_from_TDS(action.attrib['NODE_LIST'].strip(), action.attrib['TC_READY'].strip())
             if action_name == 'Check_PFS_Traceablity':
                 self.chk_pfs_traceability(action.attrib['TEAM'].strip())
 
@@ -641,6 +643,10 @@ class FreeMind(object):
     #        return res
 
     def chk_pfs_traceability(self, ver_team):
+        """
+        This function will check the traceability between PFS and TDS items. Only PFS applied to specified verification
+        team will be checked and marked.
+        """
         tc_pfs_dict = {}
         pfs_tc_dict = {}
         pfs_tree = lxmlET.parse(self.pfs_url.replace('.xml', '.mm'))
@@ -674,6 +680,10 @@ class FreeMind(object):
         pfs_tree.write(self.pfs_url.replace('.xml', '[PFS-TDS].mm'))
 
     def _reverse_dict(self, src_dict, dst_dict):
+        """
+        This function will reverse the traceability dictionary. The source dictionary has format like this:
+        {SRC_ID1: [DST_ID1, DST_ID2], SRC_ID2:[DST_ID1, DST_ID2]}
+        """
         for id, value_list in src_dict.iteritems():
             for value in value_list:
                 if dst_dict.has_key(value):
@@ -682,7 +692,7 @@ class FreeMind(object):
                     dst_dict[value] = [id]
 
 
-    def Generate_TCs_from_TDS(self, node_list):
+    def Generate_TCs_from_TDS(self, node_list, tc_ready):
         """
         It will generate test cases from the last tds item node. It would be empty test case in testlink.
         However, it will create the traceability between this test case and PFS/TDS automatically in testlink.
@@ -690,7 +700,6 @@ class FreeMind(object):
         """
         tc_tds_dict = {}
         tc_pfs_dict = {}
-        valid_node_list = []
 
         fm_tree = lxmlET.parse(self.tds_url)
         tds_root = fm_tree.getroot()
@@ -704,12 +713,19 @@ class FreeMind(object):
         tc_root = lxmlET.Element('testsuite', {'name': ''})
         lxmlET.SubElement(tc_root, 'node_order').text = lxmlET.CDATA('')
         lxmlET.SubElement(tc_root, 'details').text = lxmlET.CDATA('')
-        res = self._gen_tc_xml_from_tds(tc_root, tds_root, tc_tds_dict, tc_pfs_dict, node_list)
+        res = self._gen_tc_xml_from_tds(tc_root, tds_root, tc_tds_dict, tc_pfs_dict, node_list, tc_ready)
         f = open(self.tc_url, 'w')
         f.write(lxmlET.tostring(tc_root, xml_declaration=True, encoding='UTF-8', pretty_print=True))
         f.close
+        self.logger.info(self.log_prefix + \
+                         "Successfully generated the test cases xml file (%s)." % \
+                         (self.tc_url))
+
         res = self._update_pfs_node_format(tds_root)
         fm_tree.write(self.tds_url)
+        self.logger.info(self.log_prefix + \
+                         "Updated PFS nodes in  TDS document (%s)." % \
+                         (self.tds_url))
 
     def _update_pfs_node_format(self, tds_root):
         for tds_item in tds_root.iter('node'):
@@ -733,18 +749,25 @@ class FreeMind(object):
                     lxmlET.SubElement(tds_item, 'edge', {'STYLE': 'bezier', 'WIDTH': 'thin'})
 
 
-    def _gen_tc_xml_from_tds(self, ts_node, root_node, tc_tds_dict, tc_pfs_dict, node_list):
+    def _gen_tc_xml_from_tds(self, ts_node, root_node, tc_tds_dict, tc_pfs_dict, node_list, tc_ready):
+        existing_tc_list = []
         if node_list == ['']:
-            self._gen_tc_xml_from_tds_node(ts_node, root_node, tc_tds_dict, tc_pfs_dict)
+            self.logger.info(self.log_prefix + \
+                             "Generating test cases xml file for all TDS nodes.")
+            self._gen_tc_xml_from_tds_node(ts_node, root_node, tc_tds_dict, tc_pfs_dict, existing_tc_list, tc_ready)
             return
         for tds_item in root_node.iter('node'):
             if tds_item.attrib['ID'] in node_list:
+                self.logger.info(self.log_prefix + \
+                                 "Generating test cases xml file for TDS node (%s)." % \
+                                 (tds_item.attrib['ID']))
                 child_ts_node = lxmlET.SubElement(ts_node, 'testsuite', {'name': tds_item.attrib['TEXT'].strip()})
                 lxmlET.SubElement(child_ts_node, 'node_order').text = lxmlET.CDATA('')
                 lxmlET.SubElement(child_ts_node, 'details').text = lxmlET.CDATA('')
-                self._gen_tc_xml_from_tds_node(child_ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                self._gen_tc_xml_from_tds_node(child_ts_node, tds_item, tc_tds_dict, tc_pfs_dict, existing_tc_list,
+                                               tc_ready)
 
-    def _gen_tc_xml_from_tds_node(self, ts_node, root_node, tc_tds_dict, tc_pfs_dict):
+    def _gen_tc_xml_from_tds_node(self, ts_node, root_node, tc_tds_dict, tc_pfs_dict, existing_tc_list, tc_ready):
         for tds_item in root_node.findall('node'):
             if tds_item.attrib.has_key('LINK') and tds_item.attrib['LINK'].startswith(self.testlink_url):
                 continue
@@ -758,43 +781,76 @@ class FreeMind(object):
                     is_testsuite = True
                     break
             if is_testsuite:
-                self._gen_tc_xml_from_tds_node(child_ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                self._gen_tc_xml_from_tds_node(child_ts_node, tds_item, tc_tds_dict, tc_pfs_dict, existing_tc_list,
+                                               tc_ready)
                 continue
             if not self._last_tds_node(tds_item):
-                self._gen_tc_xml_from_tds_node(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                self._gen_tc_xml_from_tds_node(ts_node, tds_item, tc_tds_dict, tc_pfs_dict, existing_tc_list, tc_ready)
                 continue
             # This must be the last TDS node
             tc_list = []
             res = self._get_linked_tc(tds_item, tc_list)
             if not tc_list:
-                # If this node doesn't have a test case associated, create a new test case with traceability.
-                res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                if tds_item.attrib['ID'].strip() in existing_tc_list:
+                    continue
+                existing_tc_list.append(tds_item.attrib['ID'].strip())
+                if tc_ready:
+                    tc_node = self._get_tc_node_from_xml_by_name(self.based_tc_url, tds_item.attrib['TEXT'].strip())
+                    if tc_node is None:
+                        return
+                    res = self._update_tc_node(tc_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                    ts_node.append(tc_node)
+                else:
+                    # If this node doesn't have a test case associated, create a new dummy test case with traceability.
+                    res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
                 continue
             # If this node already have test cases associated, update its traceability if necessary.
             # Get the test case from original xml file and copy it into the new xml file
             for tc_id in tc_list:
-                tc_node = self._get_tc_node_from_xml(self.based_tc_url, tc_id)
-                res = self._update_tc_node(tc_node, tc_id, tds_item, tc_tds_dict, tc_pfs_dict)
+                if tc_id in existing_tc_list:
+                    continue
+                existing_tc_list.append(tc_id)
+                tc_node = self._get_tc_node_from_xml_by_id(self.based_tc_url, tc_id)
+                if tc_node is None:
+                    return
+                res = self._update_tc_node(tc_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_id)
                 ts_node.append(tc_node)
 
-    def _get_tc_node_from_xml(self, xml_file, tc_id):
+    def _get_tc_node_from_xml_by_id(self, xml_file, tc_id):
         parser = lxmlET.XMLParser(strip_cdata=False)
         tc_root = lxmlET.parse(xml_file, parser)
-        # fm_tree = lxmlET.parse(xml_file)
-        # tc_root = fm_tree.getroot()
         for tc_node in tc_root.iter('testcase'):
             if tc_node.find('externalid').text == tc_id.split('-')[-1]:
                 return tc_node
+        self.logger.info(self.log_prefix + \
+                         "Test case (%s) can not be found in file (%s)." % \
+                         (tc_id, xml_file))
+        return None
 
-    def _update_tc_node(self, tc_node, tc_id, tds_item, tc_tds_dict, tc_pfs_dict):
+    def _get_tc_node_from_xml_by_name(self, xml_file, tc_name):
+        parser = lxmlET.XMLParser(strip_cdata=False)
+        tc_root = lxmlET.parse(xml_file, parser)
+        for tc_node in tc_root.iter('testcase'):
+            #TODO: if tc_node.attrib('name').strip() == tc_name:
+            if tc_node.attrib['name'].strip().count(tc_name) > 0:
+                return tc_node
+        self.logger.info(self.log_prefix + \
+                         "Test case (%s) can not be found in file (%s)." % \
+                         (tc_name, xml_file))
+        return None
+
+    def _update_tc_node(self, tc_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_id=None):
         """
         Update traceability in this test case node
         TODO: If this test case is copied from another project (Can be known from tc_id),
         need to update internalid, node_order, externalid, version as well
         """
         requirements = tc_node.find('requirements')
-        for requirement in requirements.findall('requirement'):
-            requirements.remove(requirement)
+        if requirements is not None:
+            for requirement in requirements.findall('requirement'):
+                requirements.remove(requirement)
+        else:
+            requirements = lxmlET.SubElement(tc_node, 'requirements')
         requirement = lxmlET.SubElement(requirements, 'requirement')
         lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
             os.path.splitext(os.path.split(self.tds_url)[-1])[0])
@@ -854,7 +910,62 @@ class FreeMind(object):
                 os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
             lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
 
+    def _add_codecs_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict):
+        testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
+        lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
+        # Verify the audio format of MPEG-4 AAC-HE  [VBR] Bitrate:100 kbps is decoded and streamed from the all applied audio outputs
+        lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('Verify the video format of ' + tds_item.attrib[
+            'TEXT'].strip() + ' is displayed without visible artifacts, tiling or distortion.')
+        lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA('1')
+        lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA('1')
+
+        steps = lxmlET.SubElement(testcase, 'steps')
+        step = lxmlET.SubElement(steps, 'step')
+        lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA('1')
+        #Play the stream format of MPEG-4 AAC-HE  [VBR] Bitrate:100 kbps.
+        lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA(
+            'Play the stream with format of ' + tds_item.attrib['TEXT'].strip() + '.')
+        #AAC-HE format is decoded and streamed from the all applied audio outputs
+        lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(
+            'Video is displayed without visible artifacts, tiling or distortion.')
+        lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA('1')
+
+        custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
+        custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Regression Level')
+        lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('5 - First Time Run')
+        custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Test Team')
+        lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('SIT')
+        custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed')
+        lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Yes')
+        custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed Version')
+        lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('1')
+        custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+        lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Review Info')
+        lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Reviewed by Anderson Wang on 2014/4/21.')
+
+        requirements = lxmlET.SubElement(testcase, 'requirements')
+        requirement = lxmlET.SubElement(requirements, 'requirement')
+        lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+            os.path.splitext(os.path.split(self.tds_url)[-1])[0])
+        lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(tc_tds_dict[tds_item.attrib['ID']][0])
+        if not tc_pfs_dict.has_key(tds_item.attrib['ID']):
+            return
+        for pfs_id in tc_pfs_dict[tds_item.attrib['ID']]:
+            requirement = lxmlET.SubElement(requirements, 'requirement')
+            lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+                os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
+            lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
+
     def _get_tc_pfs_traceability(self, root_node, tc_pfs_dict):
+        self.logger.info(self.log_prefix + \
+                         "Getting traceability between PFS and TDS items.")
         for tds_node in root_node.iter('node'):
             if tds_node.attrib.has_key('LINK'):
                 if tds_node.attrib['LINK'].startswith(self.testlink_url) and tds_node.attrib['LINK'].count(
@@ -882,6 +993,8 @@ class FreeMind(object):
                 tc_pfs_dict[tds_item.attrib['ID']] = [pfs_id]
 
     def _get_tc_tds_traceability(self, root_node, tc_tds_dict):
+        self.logger.info(self.log_prefix + \
+                         "Getting traceability between test cases and TDS items.")
         for tds_item in root_node.iter('node'):
             if not self._last_tds_node(tds_item):
                 continue
@@ -1254,6 +1367,128 @@ class FreeMind(object):
             res = self._add_node_prefix(child, prefix)
 
         return res
+
+    def extract_tc_from_xls(self, file_name, sheet_name, review_info):
+        xls_col_dict = {'TS_Name': -1, 'TS_Details': -1, 'Name': -1, 'Summary': -1, 'Preconditions': -1,
+                        'Test Execution Type': -1, 'Importance': -1, 'HGI Regression Level': -1,
+                        'HGI Test Team': -1, 'Steps': -1, 'Expected Results': -1, 'Step Execution Type': -1
+                        , 'Requirements': -1}
+        execution_type_dict = {'Manual': '1', 'Automated': '2'}
+        importance_dict = {'H': '3', 'M': '2', 'L': '1'}
+        regression_level_list = '5 - First Time Run|4 - Full Regression|3 - Regular Regression|2 - Basic Regression|1 - Basic Sanity'.split('|')
+
+        if not os.path.exists(file_name):
+            self.logger.error(self.log_prefix + \
+                              "Cannot find the specified file (%s). Action aborted." % \
+                              (file_name))
+            return None
+        self.logger.info(self.log_prefix + \
+                         "Reading test cases from file (%s). This is going to take a while. Please wait..." % \
+                         (file_name))
+        src_wb = open_workbook(file_name, on_demand=True)
+
+        sheet_name = sheet_name.split('|')
+        sheet_name = [item.strip() for item in sheet_name]
+        review_info = review_info.split('|')
+        review_info = [item.strip() for item in review_info]
+        if review_info == ['']:
+            review_info = ['', '', '']
+        for s in src_wb.sheets():
+            if sheet_name <> [''] and s.name not in sheet_name:
+                continue
+            tc_root = lxmlET.Element('testsuite', {'name': ''})
+            lxmlET.SubElement(tc_root, 'node_order').text = lxmlET.CDATA('')
+            lxmlET.SubElement(tc_root, 'details').text = lxmlET.CDATA('')
+
+            src_sheet = src_wb.sheet_by_name(s.name)
+            ts_node = lxmlET.SubElement(tc_root, 'testsuite', {'name': s.name})
+            lxmlET.SubElement(ts_node, 'node_order').text = lxmlET.CDATA('')
+            lxmlET.SubElement(ts_node, 'details').text = lxmlET.CDATA('')
+
+            for i, cell in enumerate(src_sheet.col(0)):
+                if i < 1:
+                    continue
+                if i == 1:
+                    # Update the column index
+                    for j in range(0, src_sheet.ncols):
+                        cell_value = src_sheet.cell_value(i, j).strip()
+                        if xls_col_dict.has_key(cell_value):
+                            xls_col_dict[cell_value] = j
+                    continue
+
+                ts_name = src_sheet.cell_value(i, xls_col_dict['TS_Name']).strip()
+                if ts_name <> '':
+                    child_ts_node = lxmlET.SubElement(ts_node, 'testsuite', {'name': ts_name})
+                    lxmlET.SubElement(child_ts_node, 'node_order').text = lxmlET.CDATA('')
+                    lxmlET.SubElement(child_ts_node, 'details').text = lxmlET.CDATA(
+                        self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['TS_Details']).strip()))
+                tc_name = src_sheet.cell_value(i, xls_col_dict['Name']).strip()
+                if tc_name <> '':
+                    step_number = 1
+                    testcase = lxmlET.SubElement(child_ts_node, 'testcase', {'name': tc_name})
+                    lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA('')
+                    lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
+                    lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
+                    lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Summary']).strip()))
+                    lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Preconditions']).strip()))
+                    lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA(execution_type_dict[src_sheet.cell_value(i, xls_col_dict['Test Execution Type']).strip()])
+                    lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA(importance_dict[src_sheet.cell_value(i, xls_col_dict['Importance']).strip()])
+                    #lxmlET.SubElement(testcase, 'status').text = lxmlET.CDATA('Final')
+
+                    steps = lxmlET.SubElement(testcase, 'steps')
+                    step = lxmlET.SubElement(steps, 'step')
+                    lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA(str(step_number))
+                    lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Steps']).strip()))
+                    lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Expected Results']).strip()))
+                    lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA(execution_type_dict[src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip()])
+
+                    custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
+                    custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+                    lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Regression Level')
+                    regression_level = int(src_sheet.cell_value(i, xls_col_dict['HGI Regression Level']))
+                    regression_level = '|'.join(regression_level_list[:len(regression_level_list) - regression_level + 1])
+                    lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(regression_level)
+                    custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+                    lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Test Team')
+                    lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(src_sheet.cell_value(i, xls_col_dict['HGI Test Team']).strip())
+                    custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+                    lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed')
+                    lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(review_info[0])
+                    custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+                    lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed Version')
+                    lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(review_info[1])
+                    custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+                    lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Review Info')
+                    lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(review_info[2])
+
+                step_info = src_sheet.cell_value(i, xls_col_dict['Steps'])
+                if step_info <> "":
+                    step_number += 1
+                    step = lxmlET.SubElement(steps, 'step')
+                    lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA(str(step_number))
+                    lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Steps']).strip()))
+                    lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Expected Results']).strip()))
+                    lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA(execution_type_dict[src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip()])
+                    # requirements = lxmlET.SubElement(testcase, 'requirements')
+                    # requirement = lxmlET.SubElement(requirements, 'requirement')
+                    # lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+                    #     os.path.splitext(os.path.split(self.tds_url)[-1])[0])
+                    # lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(tc_tds_dict[tds_item.attrib['ID']][0])
+                    # if not tc_pfs_dict.has_key(tds_item.attrib['ID']):
+                    #     return
+                    # for pfs_id in tc_pfs_dict[tds_item.attrib['ID']]:
+                    #     requirement = lxmlET.SubElement(requirements, 'requirement')
+                    #     lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+                    #         os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
+                    #     lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
+
+            output_file_name = file_name.replace(os.path.splitext(file_name)[-1], '_' + s.name + '.xml')
+            f = open(output_file_name, 'w')
+            f.write(lxmlET.tostring(tc_root, xml_declaration=True, encoding='UTF-8', pretty_print=True))
+            f.close
+
+    def _replace_new_line(self, text):
+        return '<p>' + text.replace('\n', '</p><p>') + '</p>'
 
     def extract_requirements(self, req_file_name, template):
         pmr_list = []
