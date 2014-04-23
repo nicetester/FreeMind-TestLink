@@ -3,8 +3,14 @@
 	<actions>			
 		<action ENABLE = "0" NAME = "Generate_TDS" REMOVE_PREFIX = ""/>
 		<!--    ^ 	Enable/Disable the function of generate TDS items from a FreeMind file.
-					The output file will be imported into Testlink mannually as the TDS document for traceability purpose. 
+					The output file will be imported into Testlink manually as the TDS document for traceability purpose.
 					This requires the (tds_url) and (testlink, repository[PREFIX], tds_prefix) to be set in below configuration sections. -->
+		<action ENABLE = "1" NAME = "Generate_TCs_from_TDS" NODE_LIST = "ID_1748527664"  TC_READY = "1"/>
+		<!--    ^ 	Enable/Disable the function of generate test cases from a TDS FreeMind file.
+					The output file will be imported into Testlink manually and the traceability with PFS and TDS will be imported as well.
+					If you need want to generate test cases for specified nodes, please use the NODE_LIST attribute like NODE_LIST = "ID_645576504 | ID_257477480"
+					This requires the (tds_url) and (testlink, repository[PREFIX]) to be set in below configuration sections. -->
+        <action ENABLE = "0" NAME = "Check_PFS_Traceablity" TEAM = "SIT"/>
 		<action ENABLE = "0" NAME = "Link_TDS_with_TCs"/>
 		<!--    ^ 	Enable/Disable the function of updating Text Case xml file with TDS items as link.
 					The updated xml file will be imported to TestLink thus you don't neec to create links to TDS items manually. 
@@ -27,16 +33,24 @@
 					IMPORTANT: This function can only be used by test leader in TestLink with his/her DEV_KEY.
 					Otherwise a xml file will be created and you need to import the test plan into TestLink manually.
 					This requires the (tds_url, tp_url, tc_url) and (testlink, repository[PREFIX], test_plan) to be set in below configuration sections. -->
-		<action ENABLE = "1" NAME = "Extract_Requirements" TEMPLATE = "HGI"/>
+		<action ENABLE = "0" NAME = "Extract_Requirements" TEMPLATE = "HGI"/>
 		<!--    ^ 	Enable/Disable the function of extract requirements from spreadsheet template.
-					This requires the (requirements_url, traceability, pfs-pmr_name, pmr-pfs_name) 
-					and (testlink, repository[PREFIX], pfs_prefix, pmr_prefix) to be set in below configuration sections. -->
+		            TEMPLATE can be set to "HGI" or "KreaTV" for different organizational requirement templates. HGI template is the default template.
+					This action requires (requirements_url, pmr_url, pfs_url) and (testlink[URL], repository[PREFIX], pfs_prefix, pmr_prefix) to be set in below configuration sections.
+					Assumptions on HGI Template:
+						Must be converted to xls file firstly
+					    Sheet name including the requirements must end with 'Specification'
+					    Must-have columns: PMR Index, PMR Description, Index, Category, Description, DEV, DVT, SI&T, SE Comments
+					    Optional columns: PMR Title, PFS Title, Phase, FT
+					    If PMR Title and PFS Title is not specified, truncated (100 characters) PMR Description and PFS Description will be used instead.
+					-->
+        <action ENABLE = "0" NAME = "Extract_TestCases"  SHEET_NAME = "CA" REVIEW_INFO = "Yes|1|Reviewed by Megan Yin on 2014/4/23."/>
 		<action ENABLE = "0" NAME = "Link_PFS_with_PMR"/>
 		<!--    ^ 	Enable/Disable the function of creating traceability between PFS and PMR.
 					You need export PFS and PMR with xml format from TestLink and then perform this action. 
 					This requires the () to be set in below configuration sections. 
 					IMPORTANT: This function doesn't work since TestLink 1.9.9 doesn't support exporting relations between requirements. -->	
-		<action ENABLE = "0" NAME = "Link_PFS_with_TCs"/>
+		<action ENABLE = "0" NAME = "Link_PFS_with_TCs"  TEAM = "SIT"/>
 		<!--    ^ 	Enable/Disable the function of creating traceability between PFS and Test Cases.
 					You need export PFS and Test Cases with xml format from TestLink and then perform this action. 
 					This requires the () to be set in below configuration sections. -->							
@@ -47,18 +61,15 @@
 
 	<testlink URL="http://10.203.5.95/testlink/lib/api/xmlrpc/v1/xmlrpc.php" DEV_KEY="ad321a7fcd42cdf0664fe7734c260d2e">
 		<!--    ^ 	 DEV_KEY is gotten from your testlink website. It is under 'My Settings' 'API interface' 'Personal API access key' -->
-		<repository PREFIX="HDVB" NAME="HGI DVB Products">
-			<project NAME="HMC3000(V4.0)-NPI" PFS_PREFIX="HMC3000(V4.0)-NPI_" PMR_PREFIX="" TDS_PREFIX ="HMC3000(V4.0)-NPI-TDS_" MASTER_PLAN = "HMC3000(V4.0)-NPI-Master-Plan">
+		<repository PREFIX="H3000V4" NAME="HGI HMC3000(V4.0) Projects">
+			<project NAME="HMC3000(V4.0)-NPI" PFS_PREFIX="" PMR_PREFIX="" TDS_PREFIX ="HMC3000(V4.0)-NPI-TDS-" MASTER_PLAN = "">
 				<!--   If PFS_PREFIX, PMR_PREFIX, TDS_PREFIX is set to empty string "", the script will use project name plus "_" as the prefix  -->
-				<!--   MASTER_PLAN must hold all implementted test suites and test cases for this project. 
-						Please note test cases created for this project but not implemented are only labeled with keyword and not in the master plan.
-						This will be used to query the test suites and test cases information from TestLink  -->
 			</project>
 		</repository>
 	</testlink>
 	
 	<file_location URL="./">
-		<requirements_url>HMC3000 V4.0_Platform_Software_PFS_x.4_draft.xls</requirements_url>
+		<requirements_url>HMC3000 V4.0_Platform_Software_PFS_x.4.xls</requirements_url>
 		<!--  ^  INPUT: This is the PMR, PFS and traceability document created based on defined template.	 -->
 		<pmr_url>HMC3000(V4.0)-NPI-PMR.xml</pmr_url>
 		<!--  ^  INPUT/OUTPUT: This is the PMR file manually exported/import from/to TestLink	 -->	
@@ -67,6 +78,7 @@
 		<tds_url>HMC3000(V4.0)-NPI-TDS.mm</tds_url>
 		<!--  ^  INPUT: This is the Test Design Specification Document created by FreeMind	 -->
 		<tc_url>HMC3000(V4.0)-NPI-TC.xml</tc_url>
+        <based_tc_url>Basic Conax CA TestCase based on 6.0_20140423_add HGI Regression Level_CA.xml</based_tc_url>
 		<!--  ^  INPUT: This is the Test Cases file manually exported from TestLink	 -->		
 		<tp_url>HMC3000(V4.0)-NPI-TP-A1.1.mm</tp_url>
 		<!--  ^  INPUT: This is the Test Plan created by FreeMind. The file name of the test plan will be used as the test plan name in TestLink	 -->	
