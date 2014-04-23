@@ -768,14 +768,17 @@ class FreeMind(object):
                                                tc_ready)
 
     def _gen_tc_xml_from_tds_node(self, ts_node, root_node, tc_tds_dict, tc_pfs_dict, existing_tc_list, tc_ready):
+        ts_node_order = -1
+        tc_node_order = -1
         for tds_item in root_node.findall('node'):
             if tds_item.attrib.has_key('LINK') and tds_item.attrib['LINK'].startswith(self.testlink_url):
                 continue
             is_testsuite = False
             for item_icon in tds_item.findall('icon'):
                 if item_icon.attrib['BUILTIN'] == 'folder':
+                    ts_node_order += 1
                     child_ts_node = lxmlET.SubElement(ts_node, 'testsuite', {'name': tds_item.attrib['TEXT'].strip()})
-                    lxmlET.SubElement(child_ts_node, 'node_order').text = lxmlET.CDATA('')
+                    lxmlET.SubElement(child_ts_node, 'node_order').text = lxmlET.CDATA(str(ts_node_order))
                     lxmlET.SubElement(child_ts_node, 'details').text = lxmlET.CDATA('')
                     #ts_node = child_ts_node
                     is_testsuite = True
@@ -794,15 +797,17 @@ class FreeMind(object):
                 if tds_item.attrib['ID'].strip() in existing_tc_list:
                     continue
                 existing_tc_list.append(tds_item.attrib['ID'].strip())
+                tc_node_order += 1
                 if tc_ready:
                     tc_node = self._get_tc_node_from_xml_by_name(self.based_tc_url, tds_item.attrib['TEXT'].strip())
                     if tc_node is None:
-                        return
-                    res = self._update_tc_node(tc_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                        res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                        continue
+                    res = self._update_tc_node(tc_node, tc_node_order, tds_item, tc_tds_dict, tc_pfs_dict)
                     ts_node.append(tc_node)
                 else:
                     # If this node doesn't have a test case associated, create a new dummy test case with traceability.
-                    res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                    res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order)
                 continue
             # If this node already have test cases associated, update its traceability if necessary.
             # Get the test case from original xml file and copy it into the new xml file
@@ -810,10 +815,11 @@ class FreeMind(object):
                 if tc_id in existing_tc_list:
                     continue
                 existing_tc_list.append(tc_id)
+                tc_node_order += 1
                 tc_node = self._get_tc_node_from_xml_by_id(self.based_tc_url, tc_id)
                 if tc_node is None:
                     return
-                res = self._update_tc_node(tc_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_id)
+                res = self._update_tc_node(tc_node, tc_node_order, tds_item, tc_tds_dict, tc_pfs_dict, tc_id)
                 ts_node.append(tc_node)
 
     def _get_tc_node_from_xml_by_id(self, xml_file, tc_id):
@@ -822,7 +828,7 @@ class FreeMind(object):
         for tc_node in tc_root.iter('testcase'):
             if tc_node.find('externalid').text == tc_id.split('-')[-1]:
                 return tc_node
-        self.logger.info(self.log_prefix + \
+        self.logger.warning(self.log_prefix + \
                          "Test case (%s) can not be found in file (%s)." % \
                          (tc_id, xml_file))
         return None
@@ -831,20 +837,21 @@ class FreeMind(object):
         parser = lxmlET.XMLParser(strip_cdata=False)
         tc_root = lxmlET.parse(xml_file, parser)
         for tc_node in tc_root.iter('testcase'):
-            #TODO: if tc_node.attrib('name').strip() == tc_name:
-            if tc_node.attrib['name'].strip().count(tc_name) > 0:
+            if tc_node.attrib('name').strip() == tc_name:
+            #if tc_node.attrib['name'].strip().count(tc_name) > 0: #For Li Tong Only
                 return tc_node
-        self.logger.info(self.log_prefix + \
+        self.logger.warning(self.log_prefix + \
                          "Test case (%s) can not be found in file (%s)." % \
                          (tc_name, xml_file))
         return None
 
-    def _update_tc_node(self, tc_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_id=None):
+    def _update_tc_node(self, tc_node, tc_node_order, tds_item, tc_tds_dict, tc_pfs_dict, tc_id=None):
         """
         Update traceability in this test case node
         TODO: If this test case is copied from another project (Can be known from tc_id),
         need to update internalid, node_order, externalid, version as well
         """
+        tc_node.find('node_order').text = lxmlET.CDATA(str(tc_node_order))
         requirements = tc_node.find('requirements')
         if requirements is not None:
             for requirement in requirements.findall('requirement'):
@@ -863,9 +870,9 @@ class FreeMind(object):
                 os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
             lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
 
-    def _add_dummy_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict):
+    def _add_dummy_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order):
         testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
-        lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA(str(tc_node_order))
         lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
         lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
         lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('')
@@ -1402,6 +1409,7 @@ class FreeMind(object):
 
             src_sheet = src_wb.sheet_by_name(s.name)
             ts_node = lxmlET.SubElement(tc_root, 'testsuite', {'name': s.name})
+            child_ts_node = ts_node
             lxmlET.SubElement(ts_node, 'node_order').text = lxmlET.CDATA('')
             lxmlET.SubElement(ts_node, 'details').text = lxmlET.CDATA('')
 
@@ -1431,7 +1439,17 @@ class FreeMind(object):
                     lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
                     lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Summary']).strip()))
                     lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Preconditions']).strip()))
+                    if not execution_type_dict.has_key(src_sheet.cell_value(i, xls_col_dict['Test Execution Type']).strip()):
+                        self.logger.error(self.log_prefix + \
+                                         "Wrong test case execution type (%s) in row(%d), col(%d) in sheet(%s) of file(%s)" % \
+                                         (src_sheet.cell_value(i, xls_col_dict['Test Execution Type']).strip(), i+1, xls_col_dict['Test Execution Type']+1, s.name, file_name))
+                        return
                     lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA(execution_type_dict[src_sheet.cell_value(i, xls_col_dict['Test Execution Type']).strip()])
+                    if not importance_dict.has_key(src_sheet.cell_value(i, xls_col_dict['Importance']).strip()):
+                        self.logger.error(self.log_prefix + \
+                                         "Wrong importance type (%s) in row(%d), col(%d) in sheet(%s) of file(%s)" % \
+                                         (src_sheet.cell_value(i, xls_col_dict['Importance']).strip(), i+1, xls_col_dict['Importance']+1, s.name, file_name))
+                        return
                     lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA(importance_dict[src_sheet.cell_value(i, xls_col_dict['Importance']).strip()])
                     #lxmlET.SubElement(testcase, 'status').text = lxmlET.CDATA('Final')
 
@@ -1440,6 +1458,11 @@ class FreeMind(object):
                     lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA(str(step_number))
                     lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Steps']).strip()))
                     lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Expected Results']).strip()))
+                    if not execution_type_dict.has_key(src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip()):
+                        self.logger.error(self.log_prefix + \
+                                         "Wrong test step execution type (%s) in row(%d), col(%d) in sheet(%s) of file(%s)" % \
+                                         (src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip(), i+1, xls_col_dict['Step Execution Type']+1, s.name, file_name))
+                        return
                     lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA(execution_type_dict[src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip()])
 
                     custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
@@ -1468,6 +1491,11 @@ class FreeMind(object):
                     lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA(str(step_number))
                     lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Steps']).strip()))
                     lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(self._replace_new_line(src_sheet.cell_value(i, xls_col_dict['Expected Results']).strip()))
+                    if not execution_type_dict.has_key(src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip()):
+                        self.logger.error(self.log_prefix + \
+                                         "Wrong test step execution type (%s) in row(%d), col(%d) in sheet(%s) of file(%s)" % \
+                                         (src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip(), i+1, xls_col_dict['Step Execution Type'] + 1, s.name, file_name))
+                        return
                     lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA(execution_type_dict[src_sheet.cell_value(i, xls_col_dict['Step Execution Type']).strip()])
                     # requirements = lxmlET.SubElement(testcase, 'requirements')
                     # requirement = lxmlET.SubElement(requirements, 'requirement')
@@ -1486,6 +1514,9 @@ class FreeMind(object):
             f = open(output_file_name, 'w')
             f.write(lxmlET.tostring(tc_root, xml_declaration=True, encoding='UTF-8', pretty_print=True))
             f.close
+            self.logger.info(self.log_prefix + \
+                             "Successfully generated test case file (%s). You can now import it into TestLink" % \
+                             (output_file_name))
 
     def _replace_new_line(self, text):
         return '<p>' + text.replace('\n', '</p><p>') + '</p>'
