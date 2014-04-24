@@ -12,6 +12,9 @@ from lxml import etree as lxmlET
 
 import testlink
 from xlrd import open_workbook
+from xlwt import Formula, easyxf
+from xlutils.copy import copy
+
 from docx import Document
 import pprint
 
@@ -191,6 +194,8 @@ class FreeMind(object):
                 self.Generate_TCs_from_TDS(action.attrib['NODE_LIST'].strip(), action.attrib['TC_READY'].strip())
             if action_name == 'Check_PFS_Traceablity':
                 self.chk_pfs_traceability(action.attrib['TEAM'].strip())
+            if action_name == 'Generate_PFS_TC_Traceablity':
+                self.gen_pfs_tc_traceability(action.attrib['TEAM'].strip())
 
         return 0
 
@@ -642,6 +647,64 @@ class FreeMind(object):
     #
     #        return res
 
+    def gen_pfs_tc_traceability(self, ver_team):
+        tc_req_list = []
+        req_tc_list = []
+        tc_fm_file = self.tc_url.replace('.xml', '.mm')
+        res = self._read_tc_from_xml(self.tc_url, tc_fm_file, tc_req_list)
+        res = self._reverse_links(tc_req_list, req_tc_list)
+        #pprint.pprint(req_tc_list)
+        self._update_pfs_with_tc_traceability(self.requirements_url, req_tc_list)
+
+    def _update_pfs_with_tc_traceability(self, pfs_url, req_tc_list):
+        self.logger.info(self.log_prefix + \
+                         "Reading requirement file (%s) and updating traceability. This is going to take a while..." % \
+                         (pfs_url))
+        src_wb = open_workbook(pfs_url, formatting_info=True)
+        for index, s in enumerate(src_wb.sheets()):
+            if s.name.lower().count('specification') > 0:
+                src_req_sheet = s
+                break
+        dst_wb = copy(src_wb)
+        dst_req_sheet = dst_wb.get_sheet(index)
+        plain = easyxf('')
+
+        pfs_index_col = 0
+        pfs_tc_col = 0
+        col_defined = False
+        for i, cell in enumerate(src_req_sheet.col(0)):
+            if not col_defined:
+                for j in range(0, src_req_sheet.ncols):
+                    cell_text = str(src_req_sheet.cell_value(i, j)).strip()
+                    if cell_text.lower() == 'index':
+                        pfs_index_col = j
+                    if cell_text.lower() == 'si&t':
+                        ver_sit_col = j
+                        col_defined = True
+                        coverage_formula = 'COUNTA(' + unichr(ord('A')+pfs_tc_col) + str(i+2) + ':' + \
+                                           unichr(ord('A')+pfs_tc_col) + str(src_req_sheet.nrows+1) + ')/COUNTA('+ \
+                                           unichr(ord('A')+ver_sit_col) + str(i+2) + ':' + unichr(ord('A')+ver_sit_col) + \
+                                           str(src_req_sheet.nrows+1) + ')'
+                        dst_req_sheet.write(i, pfs_tc_col, Formula(coverage_formula), plain)
+                        #print i+1,unichr(ord('A')+pfs_tc_col), coverage_formula
+                    if cell_text.lower() == 'si&t coverage':
+                        pfs_tc_col = j
+                continue
+
+            pfs_index = str(src_req_sheet.cell_value(i, pfs_index_col)).strip()
+            if pfs_index == '':
+                continue
+            for req_item in req_tc_list:
+                if req_item[0] == pfs_index:
+                    pfs_tc_traceability = ', '.join(req_item[1])
+                    dst_req_sheet.write(i, pfs_tc_col, pfs_tc_traceability, plain)
+
+        output_file_name = pfs_url.replace(os.path.splitext(pfs_url)[-1], '[PFS-TC].xls')
+        dst_wb.save(output_file_name)
+        self.logger.info(self.log_prefix + \
+                         "Successfully generated PFS-TC traceaility file (%s)" % \
+                         (output_file_name))
+
     def chk_pfs_traceability(self, ver_team):
         """
         This function will check the traceability between PFS and TDS items. Only PFS applied to specified verification
@@ -837,7 +900,7 @@ class FreeMind(object):
         parser = lxmlET.XMLParser(strip_cdata=False)
         tc_root = lxmlET.parse(xml_file, parser)
         for tc_node in tc_root.iter('testcase'):
-            if tc_node.attrib('name').strip() == tc_name:
+            if tc_node.attrib['name'].strip() == tc_name:
             #if tc_node.attrib['name'].strip().count(tc_name) > 0: #For Li Tong Only
                 return tc_node
         self.logger.warning(self.log_prefix + \
@@ -871,6 +934,11 @@ class FreeMind(object):
             lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
 
     def _add_dummy_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order):
+        if not tds_item.attrib.has_key('TEXT'):
+            self.logger.error(self.log_prefix + \
+                             "Please check node (%s) since it may use a long name. Please convert it to plain text via FreeMind Menu Format=>Use Plaine Text." % \
+                             (tds_item.attrib['ID'].strip()))
+            exit(-1)
         testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
         lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA(str(tc_node_order))
         lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
@@ -916,6 +984,59 @@ class FreeMind(object):
             lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
                 os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
             lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
+
+    # For Stone Only
+    # def _add_dummy_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order):
+    #     if not tds_item.attrib.has_key('TEXT'):
+    #         self.logger.error(self.log_prefix + \
+    #                          "Please check node (%s) since it may use a long name. Please convert it to plain text via FreeMind Menu Format=>Use Plaine Text." % \
+    #                          (tds_item.attrib['ID'].strip()))
+    #         exit(-1)
+    #     testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
+    #     lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA(str(tc_node_order))
+    #     lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
+    #     lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
+    #     lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('')
+    #     lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA('')
+    #     lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA('1')
+    #     lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA('1')
+    #
+    #     steps = lxmlET.SubElement(testcase, 'steps')
+    #     # step = lxmlET.SubElement(steps, 'step')
+    #     # lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA('1')
+    #     # lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA('')
+    #     # lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA('')
+    #     # lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA('1')
+    #     #
+    #     custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
+    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Regression Level')
+    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('5 - First Time Run')
+    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Test Team')
+    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('SIT')
+    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed')
+    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Yes')
+    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed Version')
+    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('1')
+    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Review Info')
+    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Reviewed by core team on 2014/4/24.')
+    #
+    #     requirements = lxmlET.SubElement(testcase, 'requirements')
+    #     requirement = lxmlET.SubElement(requirements, 'requirement')
+    #     lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+    #         os.path.splitext(os.path.split(self.tds_url)[-1])[0])
+    #     lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(tc_tds_dict[tds_item.attrib['ID']][0])
+    #     if not tc_pfs_dict.has_key(tds_item.attrib['ID']):
+    #         return
+    #     for pfs_id in tc_pfs_dict[tds_item.attrib['ID']]:
+    #         requirement = lxmlET.SubElement(requirements, 'requirement')
+    #         lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
+    #             os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
+    #         lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
 
     def _add_codecs_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict):
         testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
@@ -1336,6 +1457,11 @@ class FreeMind(object):
             # if child.attrib['TEXT'][0].isdigit:
             #     # Since Unicode may also be considered as numbers, we need to make sure this is unicode or prefix
             #     if (child.attrib['TEXT'].split(PREFIX_TITLE_SEP)[0] <> child.attrib['TEXT']):
+            if not child.attrib.has_key('TEXT'):
+                self.logger.error(self.log_prefix + \
+                                 "Please check node (%s) since it may use a long name. Please convert it to plain text via FreeMind Menu Format=>Use Plaine Text." % \
+                                 (child.attrib['ID'].strip()))
+                exit(-1)
             if child.attrib['TEXT'].count(PREFIX_TITLE_SEP) == 0:
                 continue
             self.logger.debug(self.log_prefix + \
@@ -1374,6 +1500,77 @@ class FreeMind(object):
             res = self._add_node_prefix(child, prefix)
 
         return res
+
+    def extract_tc_from_docx(self, file_name, review_info):
+        pass
+        # self.logger.info(self.log_prefix + \
+        #                  "Reading test cases from file (%s). This is going to take a while. Please wait..." % \
+        #                  file_name)
+        #
+        # if os.path.splitext(file_name)[-1] != '.docx':
+        #     self.logger.error(self.log_prefix + \
+        #                       "I am sorry that I can not parse this file. Please convert it to a docx file.")
+        #     exit(-1)
+        # pfs_index_list = []
+        # pfs_grp_list = []
+        # pfs_grp_id = 0
+        # valid_columns = ['Index', 'Category', 'Description', 'DEV', 'DVT', 'FT', 'SI&T', 'Comment']
+        # ver_team_list = ['DEV', 'DVT', 'FT', 'SIT']
+        #
+        # document = Document(file_name)
+        # for table in document.tables:
+        #     invalid_table = False
+        #     if len(table.columns) != len(valid_columns):
+        #         continue
+        #     for i in range(0, len(table.rows)):
+        #         pfs_item = []
+        #         for j in range(0, len(table.columns)):
+        #             cell = table.cell(i, j)
+        #             paragraph_text = ''
+        #             for k, paragraph in enumerate(cell.paragraphs):
+        #                 if i == 0 and paragraph.text != valid_columns[j]:
+        #                     invalid_table = True
+        #                     break
+        #                 elif i > 0:
+        #                     if k > 0:  #paragraph.style.startswith('List'):
+        #                         paragraph_text += '\n'
+        #                     paragraph_text += paragraph.text.strip()
+        #             pfs_item.append(paragraph_text)
+        #             if invalid_table:
+        #                 break
+        #         if invalid_table:
+        #             break
+        #         if i == 0 or pfs_item[0] == '':
+        #             continue
+        #         pfs_cat = pfs_item[1]
+        #         if pfs_cat != '':
+        #             if pfs_cat in pfs_grp_list:
+        #                 pfs_grp_id = pfs_grp_list.index(pfs_cat)
+        #             else:
+        #                 pfs_grp_list.append(pfs_cat)
+        #                 pfs_list.append([pfs_cat, []])
+        #                 pfs_grp_id = len(pfs_grp_list) - 1
+        #         if pfs_item[0] not in pfs_index_list:
+        #             pfs_ver_team = ''
+        #             for ver_index in range(0, len(ver_team_list)):
+        #                 if pfs_item[3 + ver_index] == 'Y':
+        #                     pfs_ver_team += '|' + ver_team_list[ver_index]
+        #             pfs_ver_team = '|'.join(pfs_ver_team.split('|')[1:])
+        #             pfs_phase = ''
+        #             if pfs_item[7].upper().startswith('P'):
+        #                 pfs_phase = pfs_item[7]
+        #             pfs_list[pfs_grp_id][1].append(
+        #                 [pfs_item[0], pfs_item[2], pfs_item[2], pfs_ver_team, '', pfs_phase])
+        #             pfs_index_list.append(pfs_item[0])
+        #         else:
+        #             self.logger.error(self.log_prefix + "%s is duplicated." % pfs_item[0])
+        #     if invalid_table:
+        #         continue
+
+        #pprint.pprint(pfs_list)
+        # self.logger.info(self.log_prefix + "%d PFS items and %d categories found in %s." % (
+        #     len(pfs_index_list), len(pfs_grp_list), file_name))
+        # return 0
 
     def extract_tc_from_xls(self, file_name, sheet_name, review_info):
         xls_col_dict = {'TS_Name': -1, 'TS_Details': -1, 'Name': -1, 'Summary': -1, 'Preconditions': -1,
