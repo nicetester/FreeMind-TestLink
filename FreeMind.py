@@ -864,7 +864,7 @@ class FreeMind(object):
                 if tc_ready:
                     tc_node = self._get_tc_node_from_xml_by_name(self.based_tc_url, tds_item.attrib['TEXT'].strip())
                     if tc_node is None:
-                        res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict)
+                        res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order)
                         continue
                     res = self._update_tc_node(tc_node, tc_node_order, tds_item, tc_tds_dict, tc_pfs_dict)
                     ts_node.append(tc_node)
@@ -900,8 +900,10 @@ class FreeMind(object):
         parser = lxmlET.XMLParser(strip_cdata=False)
         tc_root = lxmlET.parse(xml_file, parser)
         for tc_node in tc_root.iter('testcase'):
-            if tc_node.attrib['name'].strip() == tc_name:
-            #if tc_node.attrib['name'].strip().count(tc_name) > 0: #For Li Tong Only
+            #if tc_node.attrib['name'].strip() == tc_name:
+            #if tc_node.attrib['name'].strip().count(tc_name) > 0: # For Li Tong Only
+            if tc_name.count(tc_node.attrib['name'].strip()) > 0:# TODO: To be removed, for CONAX CA Only
+                tc_node.attrib['name'] = tc_name # TODO: To be removed, for CONAX CA Only
                 return tc_node
         self.logger.warning(self.log_prefix + \
                          "Test case (%s) can not be found in file (%s)." % \
@@ -1555,7 +1557,7 @@ class FreeMind(object):
             steps = lxmlET.SubElement(testcase, 'steps')
             for i in range(6, len(table.rows)):
                 step = lxmlET.SubElement(steps, 'step')
-                lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA('1')
+                lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA(str(i-5))
                 action = '\n'.join([paragraph.text.strip() for paragraph in table.cell(i, 0).paragraphs])
                 lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA(self._replace_new_line(action))
                 result = '\n'.join([paragraph.text.strip() for paragraph in table.cell(i, 1).paragraphs])
