@@ -11,7 +11,7 @@
 					If you need want to generate test cases for specified nodes, please use the NODE_LIST attribute like NODE_LIST = "ID_645576504 | ID_257477480"
 					This requires the (tds_url) and (testlink, repository[PREFIX]) to be set in below configuration sections. -->
         <action ENABLE = "0" NAME = "Check_PFS_Traceablity" TEAM = "SIT"/>
-        <action ENABLE = "1" NAME = "Generate_PFS_TC_Traceablity" TEAM = ""/>
+        <action ENABLE = "0" NAME = "Generate_PFS_TC_Traceablity" TEAM = ""/>
 		<action ENABLE = "0" NAME = "Link_TDS_with_TCs"/>
 		<!--    ^ 	Enable/Disable the function of updating Text Case xml file with TDS items as link.
 					The updated xml file will be imported to TestLink thus you don't neec to create links to TDS items manually. 
@@ -45,7 +45,7 @@
 					    Optional columns: PMR Title, PFS Title, Phase, FT
 					    If PMR Title and PFS Title is not specified, truncated (100 characters) PMR Description and PFS Description will be used instead.
 					-->
-        <action ENABLE = "0" NAME = "Extract_TestCases"  SHEET_NAME = "CA" REVIEW_INFO = "Yes|1|Reviewed by Megan Yin on 2014/4/23."/>
+        <action ENABLE = "1" NAME = "Extract_TestCases"  SHEET_NAME = "" REVIEW_INFO = "Yes|1|Reviewed by Elaine Chen on 2014/4/24."/>
 		<action ENABLE = "0" NAME = "Link_PFS_with_PMR"/>
 		<!--    ^ 	Enable/Disable the function of creating traceability between PFS and PMR.
 					You need export PFS and PMR with xml format from TestLink and then perform this action. 
@@ -78,7 +78,7 @@
 		<!--  ^  INPUT/OUTPUT: This is the PFS file manually exported/import from/to TestLink	 -->			
 		<tds_url>HMC3000(V4.0)-NPI-TDS.mm</tds_url>
 		<!--  ^  INPUT: This is the Test Design Specification Document created by FreeMind	 -->
-		<tc_url>HGI HMC3000(V4.0) Projects.testproject-deep.xml</tc_url>
+		<tc_url>CONAX_CA.docx</tc_url>
         <based_tc_url>Basic Conax CA TestCase based on 6.0_20140423_add HGI Regression Level_CA.xml</based_tc_url>
 		<!--  ^  INPUT: This is the Test Cases file manually exported from TestLink	 -->		
 		<tp_url>HMC3000(V4.0)-NPI-TP-A1.1.mm</tp_url>

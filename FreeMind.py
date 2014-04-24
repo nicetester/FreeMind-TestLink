@@ -173,7 +173,7 @@ class FreeMind(object):
             if action_name == 'Extract_Requirements':
                 self.extract_requirements(self.requirements_url, action.attrib['TEMPLATE'].strip())
             if action_name == 'Extract_TestCases':
-                self.extract_tc_from_xls(self.tc_url, action.attrib['SHEET_NAME'].strip(), action.attrib['REVIEW_INFO'].strip())
+                self.extract_tc_from_file(self.tc_url, action.attrib['SHEET_NAME'].strip(), action.attrib['REVIEW_INFO'].strip())
             if action_name == 'Link_PFS_with_PMR':
                 pass  #self.link_pfs_pmr(self.pmr_url, self.pfs_url)
             if action_name == 'Link_PFS_with_TCs':
@@ -1502,75 +1502,96 @@ class FreeMind(object):
         return res
 
     def extract_tc_from_docx(self, file_name, review_info):
-        pass
-        # self.logger.info(self.log_prefix + \
-        #                  "Reading test cases from file (%s). This is going to take a while. Please wait..." % \
-        #                  file_name)
-        #
-        # if os.path.splitext(file_name)[-1] != '.docx':
-        #     self.logger.error(self.log_prefix + \
-        #                       "I am sorry that I can not parse this file. Please convert it to a docx file.")
-        #     exit(-1)
-        # pfs_index_list = []
-        # pfs_grp_list = []
-        # pfs_grp_id = 0
-        # valid_columns = ['Index', 'Category', 'Description', 'DEV', 'DVT', 'FT', 'SI&T', 'Comment']
-        # ver_team_list = ['DEV', 'DVT', 'FT', 'SIT']
-        #
-        # document = Document(file_name)
-        # for table in document.tables:
-        #     invalid_table = False
-        #     if len(table.columns) != len(valid_columns):
-        #         continue
-        #     for i in range(0, len(table.rows)):
-        #         pfs_item = []
-        #         for j in range(0, len(table.columns)):
-        #             cell = table.cell(i, j)
-        #             paragraph_text = ''
-        #             for k, paragraph in enumerate(cell.paragraphs):
-        #                 if i == 0 and paragraph.text != valid_columns[j]:
-        #                     invalid_table = True
-        #                     break
-        #                 elif i > 0:
-        #                     if k > 0:  #paragraph.style.startswith('List'):
-        #                         paragraph_text += '\n'
-        #                     paragraph_text += paragraph.text.strip()
-        #             pfs_item.append(paragraph_text)
-        #             if invalid_table:
-        #                 break
-        #         if invalid_table:
-        #             break
-        #         if i == 0 or pfs_item[0] == '':
-        #             continue
-        #         pfs_cat = pfs_item[1]
-        #         if pfs_cat != '':
-        #             if pfs_cat in pfs_grp_list:
-        #                 pfs_grp_id = pfs_grp_list.index(pfs_cat)
-        #             else:
-        #                 pfs_grp_list.append(pfs_cat)
-        #                 pfs_list.append([pfs_cat, []])
-        #                 pfs_grp_id = len(pfs_grp_list) - 1
-        #         if pfs_item[0] not in pfs_index_list:
-        #             pfs_ver_team = ''
-        #             for ver_index in range(0, len(ver_team_list)):
-        #                 if pfs_item[3 + ver_index] == 'Y':
-        #                     pfs_ver_team += '|' + ver_team_list[ver_index]
-        #             pfs_ver_team = '|'.join(pfs_ver_team.split('|')[1:])
-        #             pfs_phase = ''
-        #             if pfs_item[7].upper().startswith('P'):
-        #                 pfs_phase = pfs_item[7]
-        #             pfs_list[pfs_grp_id][1].append(
-        #                 [pfs_item[0], pfs_item[2], pfs_item[2], pfs_ver_team, '', pfs_phase])
-        #             pfs_index_list.append(pfs_item[0])
-        #         else:
-        #             self.logger.error(self.log_prefix + "%s is duplicated." % pfs_item[0])
-        #     if invalid_table:
-        #         continue
+        self.logger.info(self.log_prefix + \
+                         "Reading test cases from file (%s). This is going to take a while. Please wait..." % \
+                         file_name)
 
-        #pprint.pprint(pfs_list)
-        # self.logger.info(self.log_prefix + "%d PFS items and %d categories found in %s." % (
-        #     len(pfs_index_list), len(pfs_grp_list), file_name))
-        # return 0
+        if os.path.splitext(file_name)[-1] != '.docx':
+            self.logger.error(self.log_prefix + \
+                              "I am sorry that I can not parse this file. Please convert it to a docx file.")
+            exit(-1)
+
+        review_info = review_info.split('|')
+        review_info = [item.strip() for item in review_info]
+        if review_info == ['']:
+            review_info = ['', '', '']
+
+        tc_root = lxmlET.Element('testsuite', {'name': ''})
+        lxmlET.SubElement(tc_root, 'node_order').text = lxmlET.CDATA('')
+        lxmlET.SubElement(tc_root, 'details').text = lxmlET.CDATA('')
+
+        ts_name = os.path.split(os.path.splitext(file_name)[0])[-1]
+        child_ts_node = lxmlET.SubElement(tc_root, 'testsuite', {'name': ts_name})
+        lxmlET.SubElement(child_ts_node, 'node_order').text = lxmlET.CDATA('')
+        lxmlET.SubElement(child_ts_node, 'details').text = lxmlET.CDATA('')
+
+        document = Document(file_name)
+        tc_node_order = -1
+        for table in document.tables:
+            invalid_table = False
+            if table.cell(0, 0).paragraphs[0].text != 'Test case ID':
+                continue
+            tc_node_order += 1
+            col_index = len(table.columns) - 2
+            tc_id = table.cell(0, col_index).paragraphs[0].text.strip()
+            tc_purpose = '\n'.join([paragraph.text.strip() for paragraph in table.cell(1, col_index).paragraphs])
+            tc_cfg = 'Test Configuration：\n'+ \
+                     '\n'.join([paragraph.text.strip() for paragraph in table.cell(2, col_index).paragraphs])
+            tc_pre_cond = 'Precondition：\n'+ \
+                          '\n'.join([paragraph.text.strip() for paragraph in table.cell(3, col_index).paragraphs])
+            tc_post_cond = 'Postcondition：\n'+ \
+                           '\n'.join([paragraph.text.strip() for paragraph in table.cell(4, col_index).paragraphs])
+            #print '\n'.join([tc_id, tc_purpose, tc_cfg, tc_pre_cond, tc_post_cond])
+            testcase = lxmlET.SubElement(child_ts_node, 'testcase', {'name': tc_id})
+            lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA(str(tc_node_order))
+            lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
+            lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
+            lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA(self._replace_new_line(tc_purpose))
+            lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA(self._replace_new_line(tc_cfg + '\n' +\
+                                                            tc_pre_cond + '\n' + tc_post_cond))
+            lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA('1')
+            lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA('3')
+
+            steps = lxmlET.SubElement(testcase, 'steps')
+            for i in range(6, len(table.rows)):
+                step = lxmlET.SubElement(steps, 'step')
+                lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA('1')
+                action = '\n'.join([paragraph.text.strip() for paragraph in table.cell(i, 0).paragraphs])
+                lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA(self._replace_new_line(action))
+                result = '\n'.join([paragraph.text.strip() for paragraph in table.cell(i, 1).paragraphs])
+                lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(self._replace_new_line(result))
+                lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA('1')
+
+            custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
+            custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+            lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Regression Level')
+            lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('5 - First Time Run|4 - Full Regression|3 - Regular Regression')
+            custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+            lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Test Team')
+            lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('SIT')
+            custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+            lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed')
+            lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(review_info[0])
+            custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+            lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed Version')
+            lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(review_info[1])
+            custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
+            lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Review Info')
+            lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA(review_info[2])
+
+        output_file_name = file_name.replace(os.path.splitext(file_name)[-1], '.xml')
+        f = open(output_file_name, 'w')
+        f.write(lxmlET.tostring(tc_root, xml_declaration=True, encoding='UTF-8', pretty_print=True))
+        f.close
+        self.logger.info(self.log_prefix + \
+                         "Successfully generated test case file (%s). You can now import it into TestLink" % \
+                         (output_file_name))
+
+    def extract_tc_from_file(self, file_name, sheet_name, review_info):
+        if os.path.splitext(file_name)[-1] == '.xls':
+            self.extract_tc_from_xls(file_name, sheet_name, review_info)
+        elif os.path.splitext(file_name)[-1].count('.doc') > 0:
+            self.extract_tc_from_docx(file_name, review_info)
 
     def extract_tc_from_xls(self, file_name, sheet_name, review_info):
         xls_col_dict = {'TS_Name': -1, 'TS_Details': -1, 'Name': -1, 'Summary': -1, 'Preconditions': -1,
