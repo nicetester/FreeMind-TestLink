@@ -5,7 +5,7 @@
 		<!--    ^ 	Enable/Disable the function of generate TDS items from a FreeMind file.
 					The output file will be imported into Testlink manually as the TDS document for traceability purpose.
 					This requires the (tds_url) and (testlink, repository[PREFIX], tds_prefix) to be set in below configuration sections. -->
-		<action ENABLE = "0" NAME = "Generate_TCs_from_TDS" NODE_LIST = ""  TC_READY = ""/>
+		<action ENABLE = "0" NAME = "Generate_TCs_from_TDS" NODE_LIST = "ID_1505974525"  TC_READY = "1"/>
 		<!--    ^ 	Enable/Disable the function of generate test cases from a TDS FreeMind file.
 					The output file will be imported into Testlink manually and the traceability with PFS and TDS will be imported as well.
 					If you need want to generate test cases for specified nodes, please use the NODE_LIST attribute like NODE_LIST = "ID_645576504 | ID_257477480"
@@ -45,7 +45,7 @@
 					    Optional columns: PMR Title, PFS Title, Phase, FT
 					    If PMR Title and PFS Title is not specified, truncated (100 characters) PMR Description and PFS Description will be used instead.
 					-->
-        <action ENABLE = "1" NAME = "Extract_TestCases"  SHEET_NAME = "" REVIEW_INFO = "Yes|1|Reviewed by Elaine Chen on 2014/4/24."/>
+        <action ENABLE = "0" NAME = "Extract_TestCases"  SHEET_NAME = "" REVIEW_INFO = "Yes|1|Reviewed by Elaine Chen on 2014/4/24."/>
 		<action ENABLE = "0" NAME = "Link_PFS_with_PMR"/>
 		<!--    ^ 	Enable/Disable the function of creating traceability between PFS and PMR.
 					You need export PFS and PMR with xml format from TestLink and then perform this action. 
@@ -63,7 +63,7 @@
 	<testlink URL="http://10.203.5.95/testlink/lib/api/xmlrpc/v1/xmlrpc.php" DEV_KEY="ad321a7fcd42cdf0664fe7734c260d2e">
 		<!--    ^ 	 DEV_KEY is gotten from your testlink website. It is under 'My Settings' 'API interface' 'Personal API access key' -->
 		<repository PREFIX="H3000V4" NAME="HGI HMC3000(V4.0) Projects">
-			<project NAME="HMC3000(V4.0)-NPI" PFS_PREFIX="HMC3000(V4.0)-NPI_|Qiantang-APP_" PMR_PREFIX="" TDS_PREFIX ="HMC3000(V4.0)-NPI-TDS-" MASTER_PLAN = "">
+			<project NAME="HMC3000(V4.0)-NPI" PFS_PREFIX="" PMR_PREFIX="" TDS_PREFIX ="HMC3000(V4.0)-NPI-TDS-" MASTER_PLAN = "">
 				<!--   If PFS_PREFIX, PMR_PREFIX, TDS_PREFIX is set to empty string "", the script will use project name plus "_" as the prefix  -->
 			</project>
 		</repository>
@@ -78,8 +78,8 @@
 		<!--  ^  INPUT/OUTPUT: This is the PFS file manually exported/import from/to TestLink	 -->			
 		<tds_url>HMC3000(V4.0)-NPI-TDS.mm</tds_url>
 		<!--  ^  INPUT: This is the Test Design Specification Document created by FreeMind	 -->
-		<tc_url>CONAX_CA.docx</tc_url>
-        <based_tc_url>Basic Conax CA TestCase based on 6.0_20140423_add HGI Regression Level_CA.xml</based_tc_url>
+		<tc_url>HMC3000(V4.0)-NPI-TC.xml</tc_url>
+        <based_tc_url>Codecs.testsuite-deep.xml</based_tc_url>
 		<!--  ^  INPUT: This is the Test Cases file manually exported from TestLink	 -->		
 		<tp_url>HMC3000(V4.0)-NPI-TP-A1.1.mm</tp_url>
 		<!--  ^  INPUT: This is the Test Plan created by FreeMind. The file name of the test plan will be used as the test plan name in TestLink	 -->	

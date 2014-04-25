@@ -99,7 +99,7 @@ class FreeMind(object):
         self.flashobject_js = None
         self.html_template = None
         self.logger.info(self.log_prefix + \
-                         "FreeMind-TestLink Tool V0.2 for Requirement Extract, Test Design and Test Management.")
+                         "FreeMind-TestLink Tool 0.3 for Requirement Extract, Test Design and Test Management.")
         if cfg_file:
             # Parse the configuration file automatically if it's specified
             self.logger.info(self.log_prefix + \
@@ -857,13 +857,17 @@ class FreeMind(object):
             tc_list = []
             res = self._get_linked_tc(tds_item, tc_list)
             if not tc_list:
+                # There is no linked test case nodes (which mainly used for reusing test cases between projects)
                 if tds_item.attrib['ID'].strip() in existing_tc_list:
                     continue
                 existing_tc_list.append(tds_item.attrib['ID'].strip())
                 tc_node_order += 1
                 if tc_ready:
+                    # Test cases for some of the nodes are ready in a xml file (for instance, tester has created
+                    # test cases in an excel file or in testlink). We can use the test case name to associate them.
                     tc_node = self._get_tc_node_from_xml_by_name(self.based_tc_url, tds_item.attrib['TEXT'].strip())
                     if tc_node is None:
+                        # If we don't have a test case for this TDS node, create a dummy test case.
                         res = self._add_dummy_testcase(ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order)
                         continue
                     res = self._update_tc_node(tc_node, tc_node_order, tds_item, tc_tds_dict, tc_pfs_dict)
@@ -900,10 +904,10 @@ class FreeMind(object):
         parser = lxmlET.XMLParser(strip_cdata=False)
         tc_root = lxmlET.parse(xml_file, parser)
         for tc_node in tc_root.iter('testcase'):
-            #if tc_node.attrib['name'].strip() == tc_name:
+            if tc_node.attrib['name'].strip() == tc_name:
             #if tc_node.attrib['name'].strip().count(tc_name) > 0: # For Li Tong Only
-            if tc_name.count(tc_node.attrib['name'].strip()) > 0:# TODO: To be removed, for CONAX CA Only
-                tc_node.attrib['name'] = tc_name # TODO: To be removed, for CONAX CA Only
+            # if tc_name.count(tc_node.attrib['name'].strip()) > 0:# For Teng Chong Only
+            #     tc_node.attrib['name'] = tc_name # For Teng Chong Only
                 return tc_node
         self.logger.warning(self.log_prefix + \
                          "Test case (%s) can not be found in file (%s)." % \
@@ -987,67 +991,21 @@ class FreeMind(object):
                 os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
             lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
 
-    # For Stone Only
-    # def _add_dummy_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order):
-    #     if not tds_item.attrib.has_key('TEXT'):
-    #         self.logger.error(self.log_prefix + \
-    #                          "Please check node (%s) since it may use a long name. Please convert it to plain text via FreeMind Menu Format=>Use Plaine Text." % \
-    #                          (tds_item.attrib['ID'].strip()))
-    #         exit(-1)
-    #     testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
-    #     lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA(str(tc_node_order))
-    #     lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
-    #     lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
-    #     lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('')
-    #     lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA('')
-    #     lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA('1')
-    #     lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA('1')
-    #
-    #     steps = lxmlET.SubElement(testcase, 'steps')
-    #     # step = lxmlET.SubElement(steps, 'step')
-    #     # lxmlET.SubElement(step, 'step_number').text = lxmlET.CDATA('1')
-    #     # lxmlET.SubElement(step, 'actions').text = lxmlET.CDATA('')
-    #     # lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA('')
-    #     # lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA('1')
-    #     #
-    #     custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
-    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
-    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Regression Level')
-    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('5 - First Time Run')
-    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
-    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('HGI Test Team')
-    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('SIT')
-    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
-    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed')
-    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Yes')
-    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
-    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Reviewed Version')
-    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('1')
-    #     custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
-    #     lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Review Info')
-    #     lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Reviewed by core team on 2014/4/24.')
-    #
-    #     requirements = lxmlET.SubElement(testcase, 'requirements')
-    #     requirement = lxmlET.SubElement(requirements, 'requirement')
-    #     lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
-    #         os.path.splitext(os.path.split(self.tds_url)[-1])[0])
-    #     lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(tc_tds_dict[tds_item.attrib['ID']][0])
-    #     if not tc_pfs_dict.has_key(tds_item.attrib['ID']):
-    #         return
-    #     for pfs_id in tc_pfs_dict[tds_item.attrib['ID']]:
-    #         requirement = lxmlET.SubElement(requirements, 'requirement')
-    #         lxmlET.SubElement(requirement, 'req_spec_title').text = lxmlET.CDATA(
-    #             os.path.splitext(os.path.split(self.pfs_url)[-1])[0])
-    #         lxmlET.SubElement(requirement, 'doc_id').text = lxmlET.CDATA(pfs_id)
-
-    def _add_codecs_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict):
+    def _add_codecs_testcase(self, ts_node, tds_item, tc_tds_dict, tc_pfs_dict, tc_node_order):
+        if not tds_item.attrib.has_key('TEXT'):
+            self.logger.error(self.log_prefix + \
+                             "Please check node (%s) since it may use a long name. Please convert it to plain text via FreeMind Menu Format=>Use Plaine Text." % \
+                             (tds_item.attrib['ID'].strip()))
+            exit(-1)
         testcase = lxmlET.SubElement(ts_node, 'testcase', {'name': tds_item.attrib['TEXT'].strip()})
-        lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA('')
+        lxmlET.SubElement(testcase, 'node_order').text = lxmlET.CDATA(str(tc_node_order))
         lxmlET.SubElement(testcase, 'externalid').text = lxmlET.CDATA('')
         lxmlET.SubElement(testcase, 'version').text = lxmlET.CDATA('1')
         # Verify the audio format of MPEG-4 AAC-HE  [VBR] Bitrate:100 kbps is decoded and streamed from the all applied audio outputs
-        lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('Verify the video format of ' + tds_item.attrib[
-            'TEXT'].strip() + ' is displayed without visible artifacts, tiling or distortion.')
+        lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('Verify the audio format of ' + tds_item.attrib[
+            'TEXT'].strip() + ' is decoded and streamed from the all applied audio outputs.')
+        # lxmlET.SubElement(testcase, 'summary').text = lxmlET.CDATA('Verify the video format of ' + tds_item.attrib[
+        #     'TEXT'].strip() + ' is displayed without visible artifacts, tiling or distortion.')
         lxmlET.SubElement(testcase, 'preconditions').text = lxmlET.CDATA('')
         lxmlET.SubElement(testcase, 'execution_type').text = lxmlET.CDATA('1')
         lxmlET.SubElement(testcase, 'importance').text = lxmlET.CDATA('1')
@@ -1060,7 +1018,9 @@ class FreeMind(object):
             'Play the stream with format of ' + tds_item.attrib['TEXT'].strip() + '.')
         #AAC-HE format is decoded and streamed from the all applied audio outputs
         lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(
-            'Video is displayed without visible artifacts, tiling or distortion.')
+            'Audio is decoded and streamed from the all applied audio outputs.')
+        # lxmlET.SubElement(step, 'expectedresults').text = lxmlET.CDATA(
+        #     'Video is displayed without visible artifacts, tiling or distortion.')
         lxmlET.SubElement(step, 'execution_type').text = lxmlET.CDATA('1')
 
         custom_fields = lxmlET.SubElement(testcase, 'custom_fields')
@@ -1078,7 +1038,7 @@ class FreeMind(object):
         lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('1')
         custom_field = lxmlET.SubElement(custom_fields, 'custom_field')
         lxmlET.SubElement(custom_field, 'name').text = lxmlET.CDATA('Review Info')
-        lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Reviewed by Anderson Wang on 2014/4/21.')
+        lxmlET.SubElement(custom_field, 'value').text = lxmlET.CDATA('Reviewed by Anderson Wang on 2014/4/25.')
 
         requirements = lxmlET.SubElement(testcase, 'requirements')
         requirement = lxmlET.SubElement(requirements, 'requirement')
@@ -1530,12 +1490,12 @@ class FreeMind(object):
         document = Document(file_name)
         tc_node_order = -1
         for table in document.tables:
-            invalid_table = False
             if table.cell(0, 0).paragraphs[0].text != 'Test case ID':
                 continue
             tc_node_order += 1
             col_index = len(table.columns) - 2
             tc_id = table.cell(0, col_index).paragraphs[0].text.strip()
+            print tc_id
             tc_purpose = '\n'.join([paragraph.text.strip() for paragraph in table.cell(1, col_index).paragraphs])
             tc_cfg = 'Test Configuration：\n'+ \
                      '\n'.join([paragraph.text.strip() for paragraph in table.cell(2, col_index).paragraphs])
